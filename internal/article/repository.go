@@ -1,0 +1,356 @@
+package article
+
+import (
+	"database/sql"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jmoiron/sqlx"
+)
+
+type feedRow struct {
+	ArticleID     string     `db:"article_id"`
+	Title         string     `db:"title"`
+	Description   string     `db:"description"`
+	Keywords      string     `db:"keywords"`
+	URL           string     `db:"url"`
+	Thumbnail     string     `db:"thumbnail"`
+	LikeCount     int64      `db:"like_count"`
+	BookmarkCount int64      `db:"bookmark_count"`
+	ShareCount    int64      `db:"share_count"`
+	PublishedAt   *time.Time `db:"published_at"`
+	CategoryID    *int64     `db:"category_id"`
+	CategoryName  *string    `db:"category_name"`
+	CategoryImage *string    `db:"category_image"`
+	CategoryThumb *string    `db:"category_thumbnail"`
+	BlogID        int64      `db:"blog_id"`
+	BlogTitle     string     `db:"blog_title"`
+	BlogFavicon   string     `db:"blog_favicon"`
+	IsLiked       bool       `db:"is_liked"`
+	IsArchived    bool       `db:"is_archived"`
+	SortKey       string     `db:"sort_key"`
+	HistoryID     *int64     `db:"history_id"`
+}
+
+type Repository struct {
+	db *sqlx.DB
+}
+
+func NewRepository(db *sqlx.DB) *Repository {
+	return &Repository{db: db}
+}
+
+func (r *Repository) Like(memberID int64, articleID string) error {
+	_, err := r.db.Exec(`INSERT INTO article_like (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
+	return err
+}
+
+func (r *Repository) Unlike(memberID int64, articleID string) error {
+	_, err := r.db.Exec(`UPDATE article_like SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
+	return err
+}
+
+func (r *Repository) Bookmark(memberID int64, articleID string) error {
+	_, err := r.db.Exec(`INSERT INTO article_bookmark (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
+	return err
+}
+
+func (r *Repository) Unbookmark(memberID int64, articleID string) error {
+	_, err := r.db.Exec(`UPDATE article_bookmark SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
+	return err
+}
+
+func (r *Repository) Share(memberID int64, articleID string) error {
+	result, err := r.db.Exec(`INSERT IGNORE INTO article_share (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows > 0 {
+		_, err = r.db.Exec(`UPDATE article SET share_count = share_count + 1 WHERE article_id = ?`, articleID)
+	}
+	return err
+}
+
+func (r *Repository) MarkUninterested(memberID int64, articleID string) error {
+	_, err := r.db.Exec(`INSERT INTO article_uninterest (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
+	return err
+}
+
+func (r *Repository) GetByIDs(memberID int64, articleIDs []string) ([]FeedItem, error) {
+	return r.fetchFeedItems(memberID, `a.article_id IN (?)`, articleIDs, "FIELD(a.article_id, ?)")
+}
+
+func (r *Repository) ListBookmarks(memberID int64, limit int, from string) (*BookmarkPage, error) {
+	condition := `ab.member_id = ? AND ab.is_deleted = false`
+	args := []any{memberID}
+	if from != "" {
+		condition += ` AND a.sort_key < ?`
+		args = append(args, from)
+	}
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       true AS is_archived,
+		       a.sort_key
+		FROM article_bookmark ab
+		JOIN article a ON a.article_id = ab.article_id
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY ab.updated_at DESC
+		LIMIT ?`, append([]any{memberID}, append(args, limit+1)...)...)
+	if err != nil {
+		return nil, err
+	}
+	page, next := paginateBySortKey(items, limit)
+	return &BookmarkPage{Articles: page, Next: next}, nil
+}
+
+func (r *Repository) ListRecent(memberID int64, limit int, from string) (*RecentArticlesPage, error) {
+	condition := `1 = 1`
+	args := []any{memberID, memberID}
+	if from != "" {
+		condition += ` AND a.sort_key < ?`
+		args = append(args, from)
+	}
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.sort_key
+		FROM article a
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY a.sort_key DESC
+		LIMIT ?`, append(args, limit+1)...)
+	if err != nil {
+		return nil, err
+	}
+	page, next := paginateBySortKey(items, limit)
+	return &RecentArticlesPage{Articles: page, Next: next}, nil
+}
+
+func (r *Repository) ListByBlog(memberID int64, blogID int64, limit int, from string) (*RecentArticlesPage, error) {
+	condition := `a.blog_id = ?`
+	args := []any{memberID, memberID, blogID}
+	if from != "" {
+		condition += ` AND a.sort_key < ?`
+		args = append(args, from)
+	}
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.sort_key
+		FROM article a
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY a.sort_key DESC
+		LIMIT ?`, append(args, limit+1)...)
+	if err != nil {
+		return nil, err
+	}
+	page, next := paginateBySortKey(items, limit)
+	return &RecentArticlesPage{Articles: page, Next: next}, nil
+}
+
+func (r *Repository) ListHistory(memberID int64, limit int, from *int64) (*ArticleHistoryPage, error) {
+	condition := `ah.member_id = ?`
+	args := []any{memberID, memberID, memberID}
+	if from != nil {
+		condition += ` AND ah.id < ?`
+		args = append(args, *from)
+	}
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.sort_key,
+		       ah.id AS history_id
+		FROM article_history ah
+		JOIN article a ON a.article_id = ah.article_id
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY ah.id DESC
+		LIMIT ?`, append(args, limit+1)...)
+	if err != nil {
+		return nil, err
+	}
+	feedItems := make([]FeedItem, 0, min(len(items), limit))
+	var next *int64
+	for idx, row := range items {
+		if idx >= limit {
+			next = row.HistoryID
+			break
+		}
+		feedItems = append(feedItems, row.toFeedItem())
+	}
+	return &ArticleHistoryPage{Articles: feedItems, Next: next}, nil
+}
+
+func (r *Repository) Search(query string, limit int) (*ArticleSearchContainer, error) {
+	rows := make([]struct {
+		ID string `db:"article_id"`
+	}, 0)
+	err := r.db.Select(&rows, `SELECT article_id FROM article WHERE title LIKE ? OR description LIKE ? ORDER BY sort_key DESC LIMIT ?`, "%"+query+"%", "%"+query+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	articles := make([]ArticleSearch, 0, len(rows))
+	for _, row := range rows {
+		articles = append(articles, ArticleSearch{ID: row.ID})
+	}
+	return &ArticleSearchContainer{Articles: articles}, nil
+}
+
+func (r *Repository) GetArticleURL(articleID string) (string, error) {
+	var url string
+	err := r.db.Get(&url, `SELECT url FROM article WHERE article_id = ?`, articleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return url, nil
+}
+
+func (r *Repository) DeleteArticle(articleID string) error {
+	_, err := r.db.Exec(`DELETE FROM article WHERE article_id = ?`, articleID)
+	return err
+}
+
+func (r *Repository) fetchFeedItems(memberID int64, condition string, articleIDs []string, orderBy string) ([]FeedItem, error) {
+	if len(articleIDs) == 0 {
+		return []FeedItem{}, nil
+	}
+	query, args, err := sqlx.In(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.sort_key
+		FROM article a
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY `+orderBy, memberID, memberID, articleIDs, articleIDs)
+	if err != nil {
+		return nil, err
+	}
+	query = r.db.Rebind(query)
+	rows := make([]feedRow, 0)
+	if err := r.db.Select(&rows, query, args...); err != nil {
+		return nil, err
+	}
+	items := make([]FeedItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toFeedItem())
+	}
+	return items, nil
+}
+
+func (r *Repository) fetchRows(query string, args ...any) ([]feedRow, error) {
+	rows := make([]feedRow, 0)
+	if err := r.db.Select(&rows, query, args...); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func paginateBySortKey(rows []feedRow, limit int) ([]FeedItem, string) {
+	items := make([]FeedItem, 0, min(len(rows), limit))
+	var next string
+	for idx, row := range rows {
+		if idx >= limit {
+			next = row.SortKey
+			break
+		}
+		items = append(items, row.toFeedItem())
+	}
+	return items, next
+}
+
+func (r feedRow) toFeedItem() FeedItem {
+	keywords := []string{}
+	if strings.TrimSpace(r.Keywords) != "" {
+		keywords = strings.Split(r.Keywords, "\t")
+	}
+	var category *Category
+	if r.CategoryID != nil {
+		category = &Category{ID: *r.CategoryID}
+		if r.CategoryName != nil {
+			category.Name = *r.CategoryName
+		}
+		if r.CategoryImage != nil {
+			category.Image = *r.CategoryImage
+		}
+		if r.CategoryThumb != nil {
+			category.Thumbnail = *r.CategoryThumb
+		}
+	}
+	return FeedItem{
+		ID:           r.ArticleID,
+		Title:        strings.TrimSpace(r.Title),
+		Description:  strings.TrimSpace(r.Description),
+		Keywords:     keywords,
+		URL:          r.URL,
+		Thumbnail:    r.Thumbnail,
+		LikeCount:    r.LikeCount,
+		ArchiveCount: r.BookmarkCount,
+		ShareCount:   r.ShareCount,
+		PublishedAt:  r.PublishedAt,
+		Category:     category,
+		IsLiked:      r.IsLiked,
+		IsArchived:   r.IsArchived,
+		Blog: FeedBlogInfo{
+			ID:      sqlIntToString(r.BlogID),
+			Title:   r.BlogTitle,
+			Favicon: r.BlogFavicon,
+		},
+	}
+}
+
+func sqlIntToString(value int64) string {
+	return strconv.FormatInt(value, 10)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
