@@ -1,22 +1,16 @@
 name: Deploy Bite API to Home Server
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Bite API CI"]
     branches: ["main"]
-    paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'pkg/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/**'
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Check deploy secrets
@@ -33,16 +27,6 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      - name: Connectivity preflight
-        if: steps.deploy_guard.outputs.enabled == 'true'
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          timeout 5 bash -c "echo >/dev/tcp/$SSH_HOST/$SSH_PORT" 2>/dev/null \
-            && echo "SSH port reachable" \
-            || { echo "::warning::SSH port unreachable – skipping deploy"; echo "enabled=false" >> "$GITHUB_OUTPUT"; }
-
       - name: Deploy bite-api on home server
         if: steps.deploy_guard.outputs.enabled == 'true'
         uses: appleboy/ssh-action@v1.2.0
@@ -53,10 +37,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
-            cd ~/projects/bite-api
-            git pull origin main
             cd ~/projects/infra
-            docker compose build bite-api
+            docker compose pull bite-api
             docker compose up -d bite-api
             ATTEMPTS=15
             for i in $(seq 1 $ATTEMPTS); do
