@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/bite-sized/bite-api/internal/config"
-	"github.com/jmoiron/sqlx"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 )
 
 func NewMySQL(cfg *config.Config) (*sqlx.DB, error) {
