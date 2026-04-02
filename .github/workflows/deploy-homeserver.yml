@@ -19,9 +19,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Check deploy secrets
         id: deploy_guard
         env:
@@ -46,18 +43,7 @@ jobs:
             && echo "SSH port reachable" \
             || { echo "::warning::SSH port unreachable – skipping deploy"; echo "enabled=false" >> "$GITHUB_OUTPUT"; }
 
-      - name: Upload bite-api source
-        if: steps.deploy_guard.outputs.enabled == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "."
-          target: "~/projects/bite-api"
-
-      - name: Restart bite-api on home server
+      - name: Deploy bite-api on home server
         if: steps.deploy_guard.outputs.enabled == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -67,6 +53,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
+            cd ~/projects/bite-api
+            git pull origin main
             cd ~/projects/infra
             docker compose build bite-api
             docker compose up -d bite-api
