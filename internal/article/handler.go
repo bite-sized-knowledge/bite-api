@@ -16,23 +16,25 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc) {
 	g := v1.Group("/articles")
-	if len(authMiddleware) > 0 {
-		g.Use(authMiddleware...)
-	}
 
-	g.POST("/:articleId/likes", h.like)
-	g.DELETE("/:articleId/likes", h.unlike)
-	g.POST("/:articleId/uninterests", h.uninterest)
-	g.GET("/bookmarks", h.bookmarks)
-	g.POST("/:articleId/bookmarks", h.bookmark)
-	g.DELETE("/:articleId/bookmarks", h.unbookmark)
-	g.POST("/:articleId/shares", h.share)
-	g.GET("/recent", h.recent)
-	g.GET("/history", h.history)
+	// Public endpoints (optional auth)
+	g.GET("/recent", h.recent, optionalAuth)
 	g.GET("/search", h.search)
-	g.POST("/by-ids", h.byIDs)
+
+	// Protected endpoints
+	protected := g.Group("")
+	protected.Use(authMiddleware)
+	protected.POST("/:articleId/likes", h.like)
+	protected.DELETE("/:articleId/likes", h.unlike)
+	protected.POST("/:articleId/uninterests", h.uninterest)
+	protected.GET("/bookmarks", h.bookmarks)
+	protected.POST("/:articleId/bookmarks", h.bookmark)
+	protected.DELETE("/:articleId/bookmarks", h.unbookmark)
+	protected.POST("/:articleId/shares", h.share)
+	protected.GET("/history", h.history)
+	protected.POST("/by-ids", h.byIDs)
 }
 
 func (h *Handler) like(c echo.Context) error {
@@ -114,10 +116,7 @@ func (h *Handler) share(c echo.Context) error {
 }
 
 func (h *Handler) recent(c echo.Context) error {
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
+	memberID, _ := middleware.CurrentMemberID(c)
 	result, err := h.service.Recent(memberID, queryInt(c, "limit"), c.QueryParam("from"))
 	if err != nil {
 		return response.Error(c, err)

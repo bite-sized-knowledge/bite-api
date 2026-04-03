@@ -14,19 +14,13 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc) {
 	g := v1.Group("/feed")
-	if len(authMiddleware) > 0 {
-		g.Use(authMiddleware...)
-	}
-	g.GET("", h.feed)
+	g.GET("", h.feed, optionalAuth)
 }
 
 func (h *Handler) feed(c echo.Context) error {
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
+	memberID, _ := middleware.CurrentMemberID(c)
 	items, err := h.service.Feed(memberID)
 	if err != nil {
 		return response.Error(c, err)
