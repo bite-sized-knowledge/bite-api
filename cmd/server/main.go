@@ -33,19 +33,19 @@ func main() {
 
 	jwtService := jwtpkg.NewService(cfg.JWTSecretKey, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry)
 	emailClient := email.NewClient(cfg.ResendAPIKey, cfg.EmailFrom)
-	recsysClient := recsys.NewClient(cfg.RecsysBaseURL)
+	recsysClient := recsys.NewClient(cfg.RecsysBaseURL, cfg.RecsysAPIKey)
 
 	authRepo := auth.NewRepository(db)
 	authService := auth.NewService(authRepo, jwtService, emailClient, cfg.AppBaseURL)
-	authHandler := auth.NewHandler(authService)
+	authHandler := auth.NewHandler(authService, cfg.JWTRefreshExpiry)
 
 	memberRepo := member.NewRepository(db)
 	memberService := member.NewService(memberRepo, jwtService)
-	memberHandler := member.NewHandler(memberService)
+	memberHandler := member.NewHandler(memberService, cfg.JWTRefreshExpiry)
 
 	oauthRepo := auth.NewOAuthRepository(db)
 	oauthService := auth.NewOAuthService(cfg, oauthRepo, memberRepo, jwtService)
-	oauthHandler := auth.NewOAuthHandler(oauthService)
+	oauthHandler := auth.NewOAuthHandler(oauthService, cfg.JWTRefreshExpiry)
 
 	articleRepo := article.NewRepository(db)
 	articleService := article.NewService(articleRepo)
@@ -77,6 +77,7 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.CORS())
 	e.Use(middleware.Recover())
+	e.Use(middleware.SecureHeaders())
 
 	e.GET("/actuator/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "UP"})

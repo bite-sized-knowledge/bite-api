@@ -49,7 +49,7 @@ func Error(c echo.Context, err error) error {
 		status = http.StatusForbidden
 		message = err.Error()
 	case err != nil:
-		message = err.Error()
+		// Do not expose internal error details
 	}
 
 	return c.JSON(status, APIResponse{Success: false, Result: &ApiError{Message: message}})

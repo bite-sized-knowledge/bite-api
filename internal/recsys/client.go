@@ -11,13 +11,15 @@ import (
 
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL, apiKey string) *Client {
 	trimmed := strings.TrimRight(baseURL, "/")
 	return &Client{
 		baseURL: trimmed,
+		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -35,7 +37,14 @@ func (c *Client) Search(query string) ([]string, error) {
 }
 
 func (c *Client) fetchArticleIDs(endpoint string) ([]string, error) {
-	resp, err := c.httpClient.Get(endpoint)
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

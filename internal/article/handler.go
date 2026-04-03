@@ -167,7 +167,7 @@ func queryInt(c echo.Context, key string) int {
 		return 10
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
+	if err != nil || parsed < 1 || parsed > 100 {
 		return 10
 	}
 	return parsed

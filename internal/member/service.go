@@ -1,10 +1,10 @@
 package member
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"strings"
-	"time"
 
 	"github.com/bite-sized/bite-api/internal/model"
 	jwtpkg "github.com/bite-sized/bite-api/pkg/jwt"
@@ -128,9 +128,12 @@ func (s *Service) DeleteMember(currentMemberID, memberID int64) error {
 }
 
 func (s *Service) getAvailableName() (string, error) {
-	randGen := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 20; i++ {
-		candidate := fmt.Sprintf("User@%08x", randGen.Uint32())
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err != nil {
+			return "", err
+		}
+		candidate := fmt.Sprintf("User@%08x", binary.BigEndian.Uint32(b))
 		exists, err := s.repo.ExistsByName(candidate)
 		if err != nil {
 			return "", err

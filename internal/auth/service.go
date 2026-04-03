@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -100,7 +102,10 @@ func (s *Service) SendPasswordResetEmail(emailAddress string) error {
 }
 
 func (s *Service) sendVerification(emailAddress string, memberID int64, verifyType string) error {
-	code := fmt.Sprintf("%d", time.Now().UnixNano())
+	code, err := generateSecureToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate verification code: %w", err)
+	}
 	expiresAt := time.Now().Add(30 * time.Minute)
 	if err := s.repo.UpsertEmailVerify(emailAddress, code, memberID, verifyType, expiresAt); err != nil {
 		return err
@@ -133,7 +138,10 @@ func (s *Service) VerifyEmail(emailAddress, code, verifyType string) error {
 		return err
 	}
 	if verifyType == verifyTypePasswordReset && verifyRecord.MemberID != nil {
-		tempPassword := fmt.Sprintf("tmp-%06d", time.Now().Unix()%1000000)
+		tempPassword, err := generateSecureToken(16)
+		if err != nil {
+			return fmt.Errorf("failed to generate temp password: %w", err)
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
 		if err != nil {
 			return err
@@ -158,6 +166,14 @@ func (s *Service) IsVerified(emailAddress string, memberID int64) (bool, error) 
 		return false, nil
 	}
 	return verifyRecord.IsVerified && *verifyRecord.MemberID == memberID, nil
+}
+
+func generateSecureToken(length int) (string, error) {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *Service) ChangePassword(memberID int64, req PasswordChangeRequest) error {

@@ -1,8 +1,9 @@
 package auth
 
 import (
-	"fmt"
+	"html"
 	"net/http"
+	"time"
 
 	"github.com/bite-sized/bite-api/internal/middleware"
 	"github.com/bite-sized/bite-api/pkg/response"
@@ -10,11 +11,12 @@ import (
 )
 
 type Handler struct {
-	service *Service
+	service        *Service
+	refreshExpiry  time.Duration
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
+	return &Handler{service: service, refreshExpiry: refreshExpiry}
 }
 
 func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware ...echo.MiddlewareFunc) {
@@ -22,6 +24,7 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware
 
 	g.POST("/login", h.login)
 	g.POST("/refresh", h.refresh)
+	g.POST("/logout", h.logout)
 	g.POST("/password/reset", h.passwordReset)
 	g.GET("/email/verify", h.verifyEmail)
 	g.POST("/oauth/github", oh.HandleGitHubOAuth)
@@ -45,6 +48,7 @@ func (h *Handler) login(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	setRefreshTokenCookie(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }
 
@@ -53,11 +57,25 @@ func (h *Handler) refresh(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, err)
 	}
+	// Prefer cookie, fall back to body for backward compatibility
+	if cookieToken := getRefreshTokenFromCookie(c); cookieToken != "" {
+		req.RefreshToken = cookieToken
+	}
+	if req.RefreshToken == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"message": "missing refresh token"})
+	}
 	result, err := h.service.Refresh(req)
 	if err != nil {
+		clearRefreshTokenCookie(c)
 		return response.Error(c, err)
 	}
+	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
+}
+
+func (h *Handler) logout(c echo.Context) error {
+	clearRefreshTokenCookie(c)
+	return response.Success(c, nil)
 }
 
 func (h *Handler) requestVerifyEmail(c echo.Context) error {
@@ -92,10 +110,9 @@ func (h *Handler) passwordReset(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, err)
 	}
-	if err := h.service.SendPasswordResetEmail(req.Email); err != nil {
-		return response.Error(c, err)
-	}
-	return response.Success(c, nil)
+	// Always return success to prevent account enumeration
+	_ = h.service.SendPasswordResetEmail(req.Email)
+	return response.Success(c, map[string]string{"message": "If account exists, reset email was sent"})
 }
 
 func (h *Handler) changePassword(c echo.Context) error {
@@ -118,7 +135,7 @@ func (h *Handler) verifyEmail(c echo.Context) error {
 	code := c.QueryParam("code")
 	verifyType := c.QueryParam("type")
 	if err := h.service.VerifyEmail(emailAddress, code, verifyType); err != nil {
-		return c.HTML(http.StatusBadRequest, fmt.Sprintf("<html><body><h1>Verification failed</h1><p>%s</p></body></html>", err.Error()))
+		return c.HTML(http.StatusBadRequest, "<html><body><h1>Verification failed</h1><p>"+html.EscapeString(err.Error())+"</p></body></html>")
 	}
 	return c.HTML(http.StatusOK, "<html><body><h1>Verification succeeded</h1></body></html>")
 }

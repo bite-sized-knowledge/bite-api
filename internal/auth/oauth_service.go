@@ -1,14 +1,14 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/bite-sized/bite-api/internal/config"
 	"github.com/bite-sized/bite-api/internal/member"
@@ -144,9 +144,12 @@ func (s *OAuthService) createOAuthMember(email, name string) (int64, error) {
 }
 
 func (s *OAuthService) generateName() (string, error) {
-	randGen := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 20; i++ {
-		candidate := fmt.Sprintf("User@%08x", randGen.Uint32())
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err != nil {
+			return "", err
+		}
+		candidate := fmt.Sprintf("User@%08x", binary.BigEndian.Uint32(b))
 		exists, err := s.memberRepo.ExistsByName(candidate)
 		if err != nil {
 			return "", err

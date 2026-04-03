@@ -1,16 +1,19 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/bite-sized/bite-api/pkg/response"
 	"github.com/labstack/echo/v4"
 )
 
 type OAuthHandler struct {
-	service *OAuthService
+	service       *OAuthService
+	refreshExpiry time.Duration
 }
 
-func NewOAuthHandler(service *OAuthService) *OAuthHandler {
-	return &OAuthHandler{service: service}
+func NewOAuthHandler(service *OAuthService, refreshExpiry time.Duration) *OAuthHandler {
+	return &OAuthHandler{service: service, refreshExpiry: refreshExpiry}
 }
 
 type oauthRequest struct {
@@ -26,6 +29,7 @@ func (h *OAuthHandler) HandleGitHubOAuth(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }
 
@@ -38,5 +42,6 @@ func (h *OAuthHandler) HandleGoogleOAuth(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
+	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }

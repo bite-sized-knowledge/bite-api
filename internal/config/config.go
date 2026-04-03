@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"time"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	ResendAPIKey       string
 	EmailFrom          string
 	RecsysBaseURL      string
+	RecsysAPIKey       string
 	AppBaseURL         string
 	AppEnv             string
 	GitHubClientID     string
@@ -34,12 +36,13 @@ func Load() *Config {
 		DBUser:             getEnv("DB_USER", "bite"),
 		DBPassword:         getEnv("DB_PASSWORD", "bite"),
 		DBName:             getEnv("DB_NAME", "bite"),
-		JWTSecretKey:       getEnv("JWT_SECRET_KEY", "dev-secret"),
+		JWTSecretKey:       requireEnvInProd("JWT_SECRET_KEY", "dev-secret"),
 		JWTAccessExpiry:    getDurationEnv("JWT_ACCESS_EXPIRY", 15*time.Minute),
 		JWTRefreshExpiry:   getDurationEnv("JWT_REFRESH_EXPIRY", 365*24*time.Hour),
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
 		EmailFrom:          getEnv("EMAIL_FROM", "Bite <noreply@bite-sized.xyz>"),
 		RecsysBaseURL:      getEnv("RECSYS_BASE_URL", "http://localhost:8001"),
+		RecsysAPIKey:       getEnv("RECSYS_API_KEY", ""),
 		AppBaseURL:         getEnv("APP_BASE_URL", "http://localhost:8080"),
 		AppEnv:             getEnv("APP_ENV", "local"),
 		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
@@ -55,6 +58,17 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func requireEnvInProd(key, fallback string) string {
+	v := os.Getenv(key)
+	if v != "" {
+		return v
+	}
+	if env := os.Getenv("APP_ENV"); env == "production" {
+		log.Fatalf("FATAL: %s must be set in production", key)
+	}
+	return fallback
 }
 
 func getDurationEnv(key string, fallback time.Duration) time.Duration {
