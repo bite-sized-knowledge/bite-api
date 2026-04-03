@@ -42,43 +42,72 @@ func NewRepository(db *sqlx.DB) *Repository {
 }
 
 func (r *Repository) Like(memberID int64, articleID string) error {
-	_, err := r.db.Exec(`INSERT INTO article_like (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID)
+	tx, err := r.db.Beginx()
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO article_like (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) Unlike(memberID int64, articleID string) error {
-	_, err := r.db.Exec(`UPDATE article_like SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID)
+	tx, err := r.db.Beginx()
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE article_like SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) Bookmark(memberID int64, articleID string) error {
-	_, err := r.db.Exec(`INSERT INTO article_bookmark (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID)
+	tx, err := r.db.Beginx()
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO article_bookmark (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) Unbookmark(memberID int64, articleID string) error {
-	_, err := r.db.Exec(`UPDATE article_bookmark SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID)
+	tx, err := r.db.Beginx()
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID)
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE article_bookmark SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) Share(memberID int64, articleID string) error {
-	result, err := r.db.Exec(`INSERT IGNORE INTO article_share (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
+	tx, err := r.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`INSERT IGNORE INTO article_share (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
 	if err != nil {
 		return err
 	}
@@ -87,13 +116,15 @@ func (r *Repository) Share(memberID int64, articleID string) error {
 		return err
 	}
 	if rows > 0 {
-		_, err = r.db.Exec(`UPDATE article SET share_count = share_count + 1 WHERE article_id = ?`, articleID)
+		if _, err := tx.Exec(`UPDATE article SET share_count = (SELECT COUNT(*) FROM article_share WHERE article_id = ?) WHERE article_id = ?`, articleID, articleID); err != nil {
+			return err
+		}
 	}
-	return err
+	return tx.Commit()
 }
 
 func (r *Repository) MarkUninterested(memberID int64, articleID string) error {
-	_, err := r.db.Exec(`INSERT INTO article_uninterest (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
+	_, err := r.db.Exec(`INSERT IGNORE INTO article_uninterest (article_id, member_id) VALUES (?, ?)`, articleID, memberID)
 	return err
 }
 
