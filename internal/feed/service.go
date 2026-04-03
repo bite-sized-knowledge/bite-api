@@ -1,6 +1,8 @@
 package feed
 
 import (
+	"math/rand"
+
 	"github.com/bite-sized/bite-api/internal/article"
 	"github.com/bite-sized/bite-api/internal/recsys"
 )
@@ -23,9 +25,16 @@ func (s *Service) Feed(memberID int64) ([]article.FeedItem, error) {
 		}
 	}
 
-	recent, err := s.articleRepo.ListRecent(memberID, 10, "")
+	recent, err := s.articleRepo.ListRecent(memberID, 30, "")
 	if err != nil {
 		return nil, err
 	}
-	return recent.Articles, nil
+	items := recent.Articles
+	rand.Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
+	})
+	if len(items) > 10 {
+		items = items[:10]
+	}
+	return items, nil
 }
