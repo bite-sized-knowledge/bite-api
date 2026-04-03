@@ -10,27 +10,34 @@ import (
 )
 
 type feedRow struct {
-	ArticleID     string     `db:"article_id"`
-	Title         string     `db:"title"`
-	Description   string     `db:"description"`
-	Keywords      string     `db:"keywords"`
-	URL           string     `db:"url"`
-	Thumbnail     string     `db:"thumbnail"`
-	LikeCount     int64      `db:"like_count"`
-	BookmarkCount int64      `db:"bookmark_count"`
-	ShareCount    int64      `db:"share_count"`
-	PublishedAt   *time.Time `db:"published_at"`
-	CategoryID    *int64     `db:"category_id"`
-	CategoryName  *string    `db:"category_name"`
-	CategoryImage *string    `db:"category_image"`
-	CategoryThumb *string    `db:"category_thumbnail"`
-	BlogID        int64      `db:"blog_id"`
-	BlogTitle     string     `db:"blog_title"`
-	BlogFavicon   string     `db:"blog_favicon"`
-	IsLiked       bool       `db:"is_liked"`
-	IsArchived    bool       `db:"is_archived"`
-	SortKey       string     `db:"sort_key"`
-	HistoryID     *int64     `db:"history_id"`
+	ArticleID     string         `db:"article_id"`
+	Title         sql.NullString `db:"title"`
+	Description   sql.NullString `db:"description"`
+	Keywords      sql.NullString `db:"keywords"`
+	URL           sql.NullString `db:"url"`
+	Thumbnail     sql.NullString `db:"thumbnail"`
+	LikeCount     int64          `db:"like_count"`
+	BookmarkCount int64          `db:"bookmark_count"`
+	ShareCount    int64          `db:"share_count"`
+	PublishedAt   *time.Time     `db:"published_at"`
+	CategoryID    *int64         `db:"category_id"`
+	CategoryName  *string        `db:"category_name"`
+	CategoryImage *string        `db:"category_image"`
+	CategoryThumb *string        `db:"category_thumbnail"`
+	BlogID        int64          `db:"blog_id"`
+	BlogTitle     sql.NullString `db:"blog_title"`
+	BlogFavicon   sql.NullString `db:"blog_favicon"`
+	IsLiked       bool           `db:"is_liked"`
+	IsArchived    bool           `db:"is_archived"`
+	SortKey       sql.NullString `db:"sort_key"`
+	HistoryID     *int64         `db:"history_id"`
+}
+
+func nullStr(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
 }
 
 type Repository struct {
@@ -327,7 +334,9 @@ func paginateBySortKey(rows []feedRow, limit int) ([]FeedItem, string) {
 	var next string
 	for idx, row := range rows {
 		if idx >= limit {
-			next = row.SortKey
+			if row.SortKey.Valid {
+				next = row.SortKey.String
+			}
 			break
 		}
 		items = append(items, row.toFeedItem())
@@ -336,9 +345,10 @@ func paginateBySortKey(rows []feedRow, limit int) ([]FeedItem, string) {
 }
 
 func (r feedRow) toFeedItem() FeedItem {
+	kw := nullStr(r.Keywords)
 	keywords := []string{}
-	if strings.TrimSpace(r.Keywords) != "" {
-		keywords = strings.Split(r.Keywords, "\t")
+	if strings.TrimSpace(kw) != "" {
+		keywords = strings.Split(kw, "\t")
 	}
 	var category *Category
 	if r.CategoryID != nil {
@@ -355,11 +365,11 @@ func (r feedRow) toFeedItem() FeedItem {
 	}
 	return FeedItem{
 		ID:           r.ArticleID,
-		Title:        strings.TrimSpace(r.Title),
-		Description:  strings.TrimSpace(r.Description),
+		Title:        strings.TrimSpace(nullStr(r.Title)),
+		Description:  strings.TrimSpace(nullStr(r.Description)),
 		Keywords:     keywords,
-		URL:          r.URL,
-		Thumbnail:    r.Thumbnail,
+		URL:          nullStr(r.URL),
+		Thumbnail:    nullStr(r.Thumbnail),
 		LikeCount:    r.LikeCount,
 		ArchiveCount: r.BookmarkCount,
 		ShareCount:   r.ShareCount,
@@ -369,8 +379,8 @@ func (r feedRow) toFeedItem() FeedItem {
 		IsArchived:   r.IsArchived,
 		Blog: FeedBlogInfo{
 			ID:      sqlIntToString(r.BlogID),
-			Title:   r.BlogTitle,
-			Favicon: r.BlogFavicon,
+			Title:   nullStr(r.BlogTitle),
+			Favicon: nullStr(r.BlogFavicon),
 		},
 	}
 }
