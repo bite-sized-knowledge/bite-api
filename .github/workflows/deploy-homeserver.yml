@@ -3,7 +3,7 @@ name: Deploy Bite API to Home Server
 on:
   workflow_run:
     workflows: ["Bite API CI"]
-    branches: ["main"]
+    branches: ["prod", "dev"]
     types: [completed]
   workflow_dispatch:
 
@@ -25,11 +25,21 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
+      - name: Determine deploy target
+        id: target
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch || 'prod' }}"
+          if [ "$BRANCH" = "dev" ]; then
+            echo "service=bite-api-dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "service=bite-api" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy via webhook
         if: steps.deploy_guard.outputs.enabled == 'true'
         run: |
           RESPONSE=$(curl -sf -X POST \
-            "${{ secrets.DEPLOY_WEBHOOK_URL }}/deploy?service=bite-api" \
+            "${{ secrets.DEPLOY_WEBHOOK_URL }}/deploy?service=${{ steps.target.outputs.service }}" \
             -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}")
           echo "$RESPONSE"
           echo "$RESPONSE" | grep -q '"ok":true' || exit 1
