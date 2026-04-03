@@ -17,13 +17,15 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware ...echo.MiddlewareFunc) {
 	g := v1.Group("/auth")
 
 	g.POST("/login", h.login)
 	g.POST("/refresh", h.refresh)
 	g.POST("/password/reset", h.passwordReset)
 	g.GET("/email/verify", h.verifyEmail)
+	g.POST("/oauth/github", oh.HandleGitHubOAuth)
+	g.POST("/oauth/google", oh.HandleGoogleOAuth)
 
 	protected := g.Group("")
 	if len(authMiddleware) > 0 {

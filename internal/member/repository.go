@@ -15,6 +15,10 @@ func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) DB() *sqlx.DB {
+	return r.db
+}
+
 func (r *Repository) CreateGuest(name string) (int64, error) {
 	result, err := r.db.Exec(`INSERT INTO member (name, status, role) VALUES (?, 'ACTIVE', 'ROLE_GUEST')`, name)
 	if err != nil {

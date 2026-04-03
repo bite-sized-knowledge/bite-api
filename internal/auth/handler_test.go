@@ -9,7 +9,7 @@ import (
 func TestRegisterRoutes(t *testing.T) {
 	e := echo.New()
 	v1 := e.Group("/v1")
-	RegisterRoutes(v1, &Handler{})
+	RegisterRoutes(v1, &Handler{}, &OAuthHandler{})
 
 	routes := map[string]bool{}
 	for _, route := range e.Routes() {
@@ -25,6 +25,8 @@ func TestRegisterRoutes(t *testing.T) {
 		"GET /v1/auth/email/is-verified",
 		"POST /v1/auth/password/change",
 		"POST /v1/auth/password/match",
+		"POST /v1/auth/oauth/github",
+		"POST /v1/auth/oauth/google",
 	}
 
 	for _, route := range expected {

@@ -19,7 +19,11 @@ type Config struct {
 	EmailFrom        string
 	RecsysBaseURL    string
 	AppBaseURL       string
-	AppEnv           string
+	AppEnv             string
+	GitHubClientID     string
+	GitHubClientSecret string
+	GoogleClientID     string
+	GoogleClientSecret string
 }
 
 func Load() *Config {
@@ -37,7 +41,11 @@ func Load() *Config {
 		EmailFrom:        getEnv("EMAIL_FROM", "Bite <noreply@bite-sized.xyz>"),
 		RecsysBaseURL:    getEnv("RECSYS_BASE_URL", "http://localhost:8001"),
 		AppBaseURL:       getEnv("APP_BASE_URL", "http://localhost:8080"),
-		AppEnv:           getEnv("APP_ENV", "local"),
+		AppEnv:             getEnv("APP_ENV", "local"),
+		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 	}
 }
 

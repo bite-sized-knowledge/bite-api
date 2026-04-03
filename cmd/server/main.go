@@ -43,6 +43,10 @@ func main() {
 	memberService := member.NewService(memberRepo, jwtService)
 	memberHandler := member.NewHandler(memberService)
 
+	oauthRepo := auth.NewOAuthRepository(db)
+	oauthService := auth.NewOAuthService(cfg, oauthRepo, memberRepo, jwtService)
+	oauthHandler := auth.NewOAuthHandler(oauthService)
+
 	articleRepo := article.NewRepository(db)
 	articleService := article.NewService(articleRepo)
 	articleHandler := article.NewHandler(articleService)
@@ -82,7 +86,7 @@ func main() {
 	optionalAuth := middleware.OptionalJWTAuth(jwtService)
 
 	v1 := e.Group("/v1")
-	auth.RegisterRoutes(v1, authHandler, authMiddleware)
+	auth.RegisterRoutes(v1, authHandler, oauthHandler, authMiddleware)
 	member.RegisterRoutes(v1, memberHandler, authMiddleware)
 	article.RegisterRoutes(v1, articleHandler, authMiddleware)
 	blog.RegisterRoutes(v1, blogHandler, authMiddleware, optionalAuth)
