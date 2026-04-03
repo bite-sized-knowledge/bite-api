@@ -24,11 +24,6 @@ type PasswordChangeRequest struct {
 	NewPassword     string `json:"newPassword"`
 }
 
-type PasswordMatchRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
 type LoginResponse struct {
 	Token member.TokenResponse `json:"token"`
 }

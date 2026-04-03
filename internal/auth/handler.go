@@ -34,7 +34,6 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware
 	protected.POST("/email/request-verify", h.requestVerifyEmail)
 	protected.GET("/email/is-verified", h.isVerified)
 	protected.POST("/password/change", h.changePassword)
-	protected.POST("/password/match", h.matchPassword)
 }
 
 func (h *Handler) login(c echo.Context) error {
@@ -112,22 +111,6 @@ func (h *Handler) changePassword(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.Success(c, nil)
-}
-
-func (h *Handler) matchPassword(c echo.Context) error {
-	var req PasswordMatchRequest
-	if err := c.Bind(&req); err != nil {
-		return response.Error(c, err)
-	}
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	result, err := h.service.MatchPassword(memberID, req)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	return response.Success(c, result)
 }
 
 func (h *Handler) verifyEmail(c echo.Context) error {

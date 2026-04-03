@@ -178,19 +178,3 @@ func (s *Service) ChangePassword(memberID int64, req PasswordChangeRequest) erro
 	return s.repo.UpdateMemberPassword(memberID, string(hash))
 }
 
-func (s *Service) MatchPassword(memberID int64, req PasswordMatchRequest) (bool, error) {
-	memberRecord, err := s.repo.FindMemberByID(memberID)
-	if err != nil {
-		return false, err
-	}
-	if memberRecord == nil {
-		return false, fmt.Errorf("%w: member not found", model.ErrBadRequest)
-	}
-	if memberRecord.Email != strings.TrimSpace(req.Email) {
-		return false, fmt.Errorf("%w: email mismatch", model.ErrBadRequest)
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(memberRecord.Password), []byte(req.Password)); err != nil {
-		return false, fmt.Errorf("%w: password mismatch", model.ErrBadRequest)
-	}
-	return true, nil
-}
