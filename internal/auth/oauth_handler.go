@@ -29,7 +29,7 @@ func (h *OAuthHandler) HandleGitHubOAuth(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
+	setRefreshTokenCookie(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }
 
@@ -42,6 +42,6 @@ func (h *OAuthHandler) HandleGoogleOAuth(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
+	setRefreshTokenCookie(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }

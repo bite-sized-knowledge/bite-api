@@ -19,7 +19,7 @@ func TestGetFeedUsesFeedsEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	articleIDs, err := client.GetFeed(42)
 	if err != nil {
 		t.Fatalf("GetFeed error: %v", err)
@@ -41,7 +41,7 @@ func TestSearchUsesQueryParam(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL)
+	client := NewClient(server.URL, "")
 	articleIDs, err := client.Search("golang feed")
 	if err != nil {
 		t.Fatalf("Search error: %v", err)

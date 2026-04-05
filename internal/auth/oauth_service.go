@@ -17,9 +17,8 @@ import (
 )
 
 type OAuthLoginResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	IsNew        bool   `json:"isNew"`
+	Token member.TokenResponse `json:"token"`
+	IsNew bool                 `json:"isNew"`
 }
 
 type OAuthService struct {
@@ -126,9 +125,8 @@ func (s *OAuthService) findOrCreateOAuthMember(provider, providerMemberID, email
 	}
 
 	return &OAuthLoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		IsNew:        isNew,
+		Token: member.TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken},
+		IsNew: isNew,
 	}, nil
 }
 
