@@ -43,7 +43,7 @@ func (s *OAuthService) HandleGitHubLogin(code string) (*OAuthLoginResponse, erro
 		return nil, fmt.Errorf("%w: failed to exchange GitHub code: %v", model.ErrBadRequest, err)
 	}
 
-	ghUser, err := s.fetchGitHubUser(accessToken)
+	providerMemberID, err := s.fetchGitHubProviderMemberID(accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to fetch GitHub user: %v", model.ErrBadRequest, err)
 	}
@@ -53,13 +53,7 @@ func (s *OAuthService) HandleGitHubLogin(code string) (*OAuthLoginResponse, erro
 		return nil, fmt.Errorf("%w: failed to fetch GitHub email: %v", model.ErrBadRequest, err)
 	}
 
-	providerMemberID := fmt.Sprintf("%d", ghUser.ID)
-	name := ghUser.Login
-	if ghUser.Name != "" {
-		name = ghUser.Name
-	}
-
-	return s.findOrCreateOAuthMember("GITHUB", providerMemberID, email, name)
+	return s.findOrCreateOAuthMember("GITHUB", providerMemberID, email)
 }
 
 func (s *OAuthService) HandleGoogleLogin(code string) (*OAuthLoginResponse, error) {
@@ -73,10 +67,14 @@ func (s *OAuthService) HandleGoogleLogin(code string) (*OAuthLoginResponse, erro
 		return nil, fmt.Errorf("%w: failed to fetch Google user: %v", model.ErrBadRequest, err)
 	}
 
-	return s.findOrCreateOAuthMember("GOOGLE", gUser.ID, gUser.Email, gUser.Name)
+	return s.findOrCreateOAuthMember("GOOGLE", gUser.ID, gUser.Email)
 }
 
-func (s *OAuthService) findOrCreateOAuthMember(provider, providerMemberID, email, name string) (*OAuthLoginResponse, error) {
+// findOrCreateOAuthMember looks up a linked OAuth member or creates a fresh
+// one. The display name is always generated server-side (see generateName)
+// to guarantee uniqueness regardless of what the provider returns, so the
+// provider's name is intentionally not part of this signature.
+func (s *OAuthService) findOrCreateOAuthMember(provider, providerMemberID, email string) (*OAuthLoginResponse, error) {
 	oauthRecord, err := s.oauthRepo.FindByProviderAndProviderMemberID(provider, providerMemberID)
 	if err != nil {
 		return nil, err
@@ -169,10 +167,7 @@ type gitHubTokenResponse struct {
 }
 
 type gitHubUser struct {
-	ID    int64  `json:"id"`
-	Login string `json:"login"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	ID int64 `json:"id"`
 }
 
 type gitHubEmail struct {
@@ -218,30 +213,35 @@ func (s *OAuthService) exchangeGitHubCode(code string) (string, error) {
 	return tokenResp.AccessToken, nil
 }
 
-func (s *OAuthService) fetchGitHubUser(accessToken string) (*gitHubUser, error) {
+// fetchGitHubProviderMemberID returns the GitHub numeric user ID as a string,
+// which we use as the provider-scoped identifier in the oauth table.
+func (s *OAuthService) fetchGitHubProviderMemberID(accessToken string) (string, error) {
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var user gitHubUser
 	if err := json.Unmarshal(body, &user); err != nil {
-		return nil, err
+		return "", err
 	}
-	return &user, nil
+	if user.ID == 0 {
+		return "", fmt.Errorf("empty user id from GitHub")
+	}
+	return fmt.Sprintf("%d", user.ID), nil
 }
 
 func (s *OAuthService) fetchGitHubEmail(accessToken string) (string, error) {
@@ -295,7 +295,6 @@ type googleTokenResponse struct {
 type googleUser struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
-	Name  string `json:"name"`
 }
 
 func (s *OAuthService) exchangeGoogleCode(code string) (string, error) {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bite-sized/bite-api/internal/authcookie"
 	"github.com/bite-sized/bite-api/internal/middleware"
 	"github.com/bite-sized/bite-api/pkg/response"
 	"github.com/labstack/echo/v4"
@@ -48,7 +49,7 @@ func (h *Handler) login(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	setRefreshTokenCookie(c, result.Token.RefreshToken, h.refreshExpiry)
+	authcookie.Set(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }
 
@@ -58,7 +59,7 @@ func (h *Handler) refresh(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	// Prefer cookie, fall back to body for backward compatibility
-	if cookieToken := getRefreshTokenFromCookie(c); cookieToken != "" {
+	if cookieToken := authcookie.Get(c); cookieToken != "" {
 		req.RefreshToken = cookieToken
 	}
 	if req.RefreshToken == "" {
@@ -66,15 +67,15 @@ func (h *Handler) refresh(c echo.Context) error {
 	}
 	result, err := h.service.Refresh(req)
 	if err != nil {
-		clearRefreshTokenCookie(c)
+		authcookie.Clear(c)
 		return response.Error(c, err)
 	}
-	setRefreshTokenCookie(c, result.RefreshToken, h.refreshExpiry)
+	authcookie.Set(c, result.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
 }
 
 func (h *Handler) logout(c echo.Context) error {
-	clearRefreshTokenCookie(c)
+	authcookie.Clear(c)
 	return response.Success(c, nil)
 }
 

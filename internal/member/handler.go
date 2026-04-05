@@ -2,11 +2,10 @@ package member
 
 import (
 	"fmt"
-	"net/http"
-	"os"
 	"strconv"
 	"time"
 
+	"github.com/bite-sized/bite-api/internal/authcookie"
 	"github.com/bite-sized/bite-api/internal/middleware"
 	"github.com/bite-sized/bite-api/internal/model"
 	"github.com/bite-sized/bite-api/pkg/response"
@@ -20,19 +19,6 @@ type Handler struct {
 
 func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
 	return &Handler{service: service, refreshExpiry: refreshExpiry}
-}
-
-func (h *Handler) setRefreshCookie(c echo.Context, token string) {
-	secure := os.Getenv("APP_ENV") != "local"
-	c.SetCookie(&http.Cookie{
-		Name:     "refresh_token",
-		Value:    token,
-		Path:     "/v1/auth",
-		MaxAge:   int(h.refreshExpiry.Seconds()),
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-	})
 }
 
 func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
@@ -57,7 +43,7 @@ func (h *Handler) createGuest(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	h.setRefreshCookie(c, result.Token.RefreshToken)
+	authcookie.Set(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Created(c, result)
 }
 
@@ -74,7 +60,7 @@ func (h *Handler) join(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	h.setRefreshCookie(c, result.Token.RefreshToken)
+	authcookie.Set(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Created(c, result)
 }
 
