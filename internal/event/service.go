@@ -72,7 +72,11 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 func shouldUpdateHistory(eventType string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(eventType))
 	switch normalized {
-	case "ARTICLE_IN", "ARTICLE_OPEN", "ARTICLE_VIEW", "OPEN", "VIEW":
+	// ARTICLE_IN is the RN app's "user opened reader" signal. bite-web
+	// fires ARTICLE_CLICK instead (it opens articles in a new tab, not
+	// an in-app reader, so "IN"/"OUT" framing didn't apply cleanly).
+	// Both should populate /my/history, so accept either.
+	case "ARTICLE_IN", "ARTICLE_OPEN", "ARTICLE_VIEW", "ARTICLE_CLICK", "OPEN", "VIEW":
 		return true
 	default:
 		return false
