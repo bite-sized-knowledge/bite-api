@@ -168,10 +168,16 @@ func (r *Repository) ListBookmarks(memberID int64, limit int, from string) (*Boo
 }
 
 func (r *Repository) ListRecent(memberID int64, limit int, from string) (*RecentArticlesPage, error) {
+	// The "latest" feed must order by the source blog's publication
+	// timestamp, NOT by when we ingested the row. publish_sort_key is
+	// a generated column combining DATE_FORMAT(published_at) with
+	// article_id (fallback to created_at when published_at is null).
+	// We alias it to sort_key in the SELECT so feedRow's existing
+	// sqlx binding still maps cleanly.
 	condition := `1 = 1`
 	args := []any{memberID, memberID}
 	if from != "" {
-		condition += ` AND a.sort_key < ?`
+		condition += ` AND a.publish_sort_key < ?`
 		args = append(args, from)
 	}
 	items, err := r.fetchRows(`
@@ -180,12 +186,12 @@ func (r *Repository) ListRecent(memberID int64, limit int, from string) (*Recent
 		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
 		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
 		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
-		       a.sort_key
+		       a.publish_sort_key AS sort_key
 		FROM article a
 		JOIN blog b ON b.blog_id = a.blog_id
 		LEFT JOIN interest i ON i.interest_id = a.category_id
 		WHERE `+condition+`
-		ORDER BY a.sort_key DESC
+		ORDER BY a.publish_sort_key DESC
 		LIMIT ?`, append(args, limit+1)...)
 	if err != nil {
 		return nil, err
@@ -195,10 +201,12 @@ func (r *Repository) ListRecent(memberID int64, limit int, from string) (*Recent
 }
 
 func (r *Repository) ListByBlog(memberID int64, blogID int64, limit int, from string) (*RecentArticlesPage, error) {
+	// Single-blog view: order by publication date for consistency with
+	// the global /recent endpoint. See ListRecent for details.
 	condition := `a.blog_id = ?`
 	args := []any{memberID, memberID, blogID}
 	if from != "" {
-		condition += ` AND a.sort_key < ?`
+		condition += ` AND a.publish_sort_key < ?`
 		args = append(args, from)
 	}
 	items, err := r.fetchRows(`
@@ -207,12 +215,12 @@ func (r *Repository) ListByBlog(memberID int64, blogID int64, limit int, from st
 		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
 		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
 		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
-		       a.sort_key
+		       a.publish_sort_key AS sort_key
 		FROM article a
 		JOIN blog b ON b.blog_id = a.blog_id
 		LEFT JOIN interest i ON i.interest_id = a.category_id
 		WHERE `+condition+`
-		ORDER BY a.sort_key DESC
+		ORDER BY a.publish_sort_key DESC
 		LIMIT ?`, append(args, limit+1)...)
 	if err != nil {
 		return nil, err
