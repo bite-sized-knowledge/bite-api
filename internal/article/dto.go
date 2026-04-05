@@ -51,10 +51,6 @@ type ArticleHistoryPage struct {
 	Next     *int64     `json:"next,omitempty"`
 }
 
-type ArticleSearch struct {
-	ID string `json:"id"`
-}
-
 type ArticleSearchContainer struct {
-	Articles []ArticleSearch `json:"articles"`
+	Articles []FeedItem `json:"articles"`
 }

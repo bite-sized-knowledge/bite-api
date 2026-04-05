@@ -267,16 +267,32 @@ func (r *Repository) ListHistory(memberID int64, limit int, from *int64) (*Artic
 }
 
 func (r *Repository) Search(query string, limit int) (*ArticleSearchContainer, error) {
-	rows := make([]struct {
-		ID string `db:"article_id"`
-	}, 0)
-	err := r.db.Select(&rows, `SELECT article_id FROM article WHERE title LIKE ? OR description LIKE ? ORDER BY sort_key DESC LIMIT ?`, "%"+query+"%", "%"+query+"%", limit)
+	// The search endpoint is anonymous (no auth middleware), so there is
+	// no member context to hydrate isLiked / isArchived. The web client
+	// needs full article metadata to render each hit as a card, so we
+	// run the same join as ListRecent with a hardcoded zero member_id —
+	// both EXISTS sub-queries then return false for every row, which is
+	// the correct "not interacted" state for an anonymous caller.
+	likePattern := "%" + query + "%"
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.publish_sort_key AS sort_key
+		FROM article a
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE a.title LIKE ? OR a.description LIKE ?
+		ORDER BY a.publish_sort_key DESC
+		LIMIT ?`, int64(0), int64(0), likePattern, likePattern, limit)
 	if err != nil {
 		return nil, err
 	}
-	articles := make([]ArticleSearch, 0, len(rows))
-	for _, row := range rows {
-		articles = append(articles, ArticleSearch{ID: row.ID})
+	articles := make([]FeedItem, 0, len(items))
+	for _, row := range items {
+		articles = append(articles, row.toFeedItem())
 	}
 	return &ArticleSearchContainer{Articles: articles}, nil
 }
