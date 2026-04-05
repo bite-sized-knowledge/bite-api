@@ -193,4 +193,3 @@ func (s *Service) ChangePassword(memberID int64, req PasswordChangeRequest) erro
 	}
 	return s.repo.UpdateMemberPassword(memberID, string(hash))
 }
-

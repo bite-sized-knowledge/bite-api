@@ -12,8 +12,8 @@ import (
 )
 
 type Handler struct {
-	service        *Service
-	refreshExpiry  time.Duration
+	service       *Service
+	refreshExpiry time.Duration
 }
 
 func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
