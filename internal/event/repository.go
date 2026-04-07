@@ -75,10 +75,7 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 	}
 
 	if upsertHistory && event.ArticleID != nil && *event.ArticleID != "" {
-		if _, err = tx.Exec(`DELETE FROM article_history WHERE member_id = ? AND article_id = ?`, event.MemberID, *event.ArticleID); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(`INSERT INTO article_history (member_id, article_id) VALUES (?, ?)`, event.MemberID, *event.ArticleID); err != nil {
+		if _, err = tx.Exec(`INSERT INTO article_history (member_id, article_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = id`, event.MemberID, *event.ArticleID); err != nil {
 			return err
 		}
 	}
