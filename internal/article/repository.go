@@ -54,11 +54,16 @@ func (r *Repository) Like(memberID int64, articleID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO article_like (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID); err != nil {
+	result, err := tx.Exec(`INSERT INTO article_like (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = IF(is_deleted, CURRENT_TIMESTAMP, updated_at)`, articleID, memberID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
-		return err
+	affected, _ := result.RowsAffected()
+	// affected=1: new insert, affected=2: is_deleted toggled to false
+	if affected > 0 {
+		if _, err := tx.Exec(`UPDATE article SET like_count = like_count + 1 WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -69,11 +74,15 @@ func (r *Repository) Unlike(memberID int64, articleID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE article_like SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID); err != nil {
+	result, err := tx.Exec(`UPDATE article_like SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ? AND is_deleted = false`, articleID, memberID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE article SET like_count = (SELECT COUNT(*) FROM article_like WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
-		return err
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		if _, err := tx.Exec(`UPDATE article SET like_count = GREATEST(like_count - 1, 0) WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -84,11 +93,15 @@ func (r *Repository) Bookmark(memberID int64, articleID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO article_bookmark (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = CURRENT_TIMESTAMP`, articleID, memberID); err != nil {
+	result, err := tx.Exec(`INSERT INTO article_bookmark (article_id, member_id, is_deleted) VALUES (?, ?, false) ON DUPLICATE KEY UPDATE is_deleted = false, updated_at = IF(is_deleted, CURRENT_TIMESTAMP, updated_at)`, articleID, memberID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
-		return err
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		if _, err := tx.Exec(`UPDATE article SET bookmark_count = bookmark_count + 1 WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -99,11 +112,15 @@ func (r *Repository) Unbookmark(memberID int64, articleID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE article_bookmark SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ?`, articleID, memberID); err != nil {
+	result, err := tx.Exec(`UPDATE article_bookmark SET is_deleted = true, updated_at = CURRENT_TIMESTAMP WHERE article_id = ? AND member_id = ? AND is_deleted = false`, articleID, memberID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE article SET bookmark_count = (SELECT COUNT(*) FROM article_bookmark WHERE article_id = ? AND is_deleted = false) WHERE article_id = ?`, articleID, articleID); err != nil {
-		return err
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		if _, err := tx.Exec(`UPDATE article SET bookmark_count = GREATEST(bookmark_count - 1, 0) WHERE article_id = ?`, articleID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -123,7 +140,7 @@ func (r *Repository) Share(memberID int64, articleID string) error {
 		return err
 	}
 	if rows > 0 {
-		if _, err := tx.Exec(`UPDATE article SET share_count = (SELECT COUNT(*) FROM article_share WHERE article_id = ?) WHERE article_id = ?`, articleID, articleID); err != nil {
+		if _, err := tx.Exec(`UPDATE article SET share_count = share_count + 1 WHERE article_id = ?`, articleID); err != nil {
 			return err
 		}
 	}
