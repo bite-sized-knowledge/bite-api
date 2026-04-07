@@ -137,7 +137,7 @@ func (h *Handler) history(c echo.Context) error {
 }
 
 func (h *Handler) search(c echo.Context) error {
-	result, err := h.service.Search(c.QueryParam("query"))
+	result, err := h.service.Search(c.QueryParam("query"), queryInt(c, "limit"), c.QueryParam("from"))
 	if err != nil {
 		return response.Error(c, err)
 	}

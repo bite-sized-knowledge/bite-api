@@ -51,9 +51,15 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		articleIDPtr = &articleID
 	}
 
+	var memberIDPtr *int64
+	if memberID > 0 {
+		memberIDPtr = &memberID
+	}
+
 	return s.repo.Create(input{
 		EventUUID:     eventUUID,
-		MemberID:      memberID,
+		MemberID:      memberIDPtr,
+		DeviceID:      strings.TrimSpace(req.DeviceID),
 		EventType:     eventType,
 		ArticleID:     articleIDPtr,
 		DwellTimeMs:   req.DwellTimeMs,
@@ -69,6 +75,13 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 	}, shouldUpdateHistory(eventType))
 }
 
+func (s *Service) MergeAnonymousEvents(memberID int64, deviceID string) (int64, error) {
+	if deviceID == "" {
+		return 0, fmt.Errorf("%w: deviceId is required", model.ErrBadRequest)
+	}
+	return s.repo.MergeAnonymous(memberID, deviceID)
+}
+
 func shouldUpdateHistory(eventType string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(eventType))
 	switch normalized {
@@ -76,7 +89,7 @@ func shouldUpdateHistory(eventType string) bool {
 	// fires ARTICLE_CLICK instead (it opens articles in a new tab, not
 	// an in-app reader, so "IN"/"OUT" framing didn't apply cleanly).
 	// Both should populate /my/history, so accept either.
-	case "ARTICLE_IN", "ARTICLE_OPEN", "ARTICLE_VIEW", "ARTICLE_CLICK", "OPEN", "VIEW":
+	case "ARTICLE_IN", "ARTICLE_OPEN", "ARTICLE_VIEW", "ARTICLE_CLICK", "OPEN", "VIEW", "S_CLICK":
 		return true
 	default:
 		return false

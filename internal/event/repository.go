@@ -4,7 +4,8 @@ import "github.com/jmoiron/sqlx"
 
 type input struct {
 	EventUUID     string
-	MemberID      int64
+	MemberID      *int64
+	DeviceID      string
 	EventType     string
 	ArticleID     *string
 	DwellTimeMs   *int64
@@ -42,6 +43,7 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 		INSERT INTO user_events (
 			event_uuid,
 			member_id,
+			device_id,
 			event_type,
 			article_id,
 			dwell_time_ms,
@@ -54,9 +56,10 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 			app_version,
 			metadata,
 			occurred_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.EventUUID,
 		event.MemberID,
+		event.DeviceID,
 		event.EventType,
 		event.ArticleID,
 		event.DwellTimeMs,
@@ -74,12 +77,23 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 		return err
 	}
 
-	if upsertHistory && event.ArticleID != nil && *event.ArticleID != "" {
-		if _, err = tx.Exec(`INSERT INTO article_history (member_id, article_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = id`, event.MemberID, *event.ArticleID); err != nil {
+	if upsertHistory && event.MemberID != nil && event.ArticleID != nil && *event.ArticleID != "" {
+		if _, err = tx.Exec(`INSERT INTO article_history (member_id, article_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = id`, *event.MemberID, *event.ArticleID); err != nil {
 			return err
 		}
 	}
 
 	err = tx.Commit()
 	return err
+}
+
+func (r *Repository) MergeAnonymous(memberID int64, deviceID string) (int64, error) {
+	result, err := r.db.Exec(
+		`UPDATE user_events SET member_id = ? WHERE device_id = ? AND member_id IS NULL`,
+		memberID, deviceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

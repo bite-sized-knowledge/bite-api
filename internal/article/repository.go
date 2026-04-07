@@ -275,7 +275,7 @@ func (r *Repository) ListHistory(memberID int64, limit int, from *int64) (*Artic
 	return &ArticleHistoryPage{Articles: feedItems, Next: next}, nil
 }
 
-func (r *Repository) Search(query string, limit int) (*ArticleSearchContainer, error) {
+func (r *Repository) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
 	// The search endpoint is anonymous (no auth middleware), so there is
 	// no member context to hydrate isLiked / isArchived. The web client
 	// needs full article metadata to render each hit as a card, so we
@@ -283,6 +283,12 @@ func (r *Repository) Search(query string, limit int) (*ArticleSearchContainer, e
 	// both EXISTS sub-queries then return false for every row, which is
 	// the correct "not interacted" state for an anonymous caller.
 	likePattern := "%" + query + "%"
+	condition := `a.title LIKE ? OR a.description LIKE ?`
+	args := []any{int64(0), int64(0), likePattern, likePattern}
+	if from != "" {
+		condition = `(` + condition + `) AND a.sort_key < ?`
+		args = append(args, from)
+	}
 	items, err := r.fetchRows(`
 		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
 		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
@@ -293,17 +299,14 @@ func (r *Repository) Search(query string, limit int) (*ArticleSearchContainer, e
 		FROM article a
 		JOIN blog b ON b.blog_id = a.blog_id
 		LEFT JOIN interest i ON i.interest_id = a.category_id
-		WHERE a.title LIKE ? OR a.description LIKE ?
+		WHERE `+condition+`
 		ORDER BY a.sort_key DESC
-		LIMIT ?`, int64(0), int64(0), likePattern, likePattern, limit)
+		LIMIT ?`, append(args, limit+1)...)
 	if err != nil {
 		return nil, err
 	}
-	articles := make([]FeedItem, 0, len(items))
-	for _, row := range items {
-		articles = append(articles, row.toFeedItem())
-	}
-	return &ArticleSearchContainer{Articles: articles}, nil
+	page, next := paginateBySortKey(items, limit)
+	return &ArticleSearchPage{Articles: page, Next: next}, nil
 }
 
 func (r *Repository) GetArticleURL(articleID string) (string, error) {

@@ -9,6 +9,7 @@ type CreateEventRequest struct {
 	EventUUID        string          `json:"event_uuid"`
 	EventType        string          `json:"event_type"`
 	ArticleID        string          `json:"article_id"`
+	DeviceID         string          `json:"device_id"`
 	DwellTimeMs      *int64          `json:"dwell_time_ms"`
 	ScrollDepth      *int            `json:"scroll_depth"`
 	Source           string          `json:"source"`
@@ -25,4 +26,8 @@ type CreateEventRequest struct {
 	LegacyTargetType string `json:"targetType"`
 	LegacyTargetID   string `json:"targetId"`
 	LegacyEventType  string `json:"eventType"`
+}
+
+type MergeRequest struct {
+	DeviceID string `json:"deviceId"`
 }

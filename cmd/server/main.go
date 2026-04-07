@@ -92,7 +92,7 @@ func main() {
 	article.RegisterRoutes(v1, articleHandler, authMiddleware, optionalAuth)
 	blog.RegisterRoutes(v1, blogHandler, authMiddleware, optionalAuth)
 	feed.RegisterRoutes(v1, feedHandler, authMiddleware, optionalAuth)
-	event.RegisterRoutes(v1, eventHandler, authMiddleware)
+	event.RegisterRoutes(v1, eventHandler, authMiddleware, optionalAuth)
 	link.RegisterRoutes(v1, linkHandler)
 	meta.RegisterRoutes(v1, metaHandler)
 
