@@ -28,8 +28,8 @@ func Set(c echo.Context, token string, maxAge time.Duration) {
 		Path:     Path,
 		MaxAge:   int(maxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   secureFlag(),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
 	})
 }
 
@@ -41,8 +41,8 @@ func Clear(c echo.Context) {
 		Path:     Path,
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   secureFlag(),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
 	})
 }
 
