@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bite-sized/bite-api/internal/model"
 	jwtpkg "github.com/bite-sized/bite-api/pkg/jwt"
@@ -132,6 +133,61 @@ func (s *Service) GetInterests(memberID int64) ([]int64, error) {
 
 func (s *Service) HasDuplicateName(name string) (bool, error) {
 	return s.repo.ExistsByName(strings.TrimSpace(name))
+}
+
+func (s *Service) UpdateProfile(memberID int64, req UpdateProfileRequest) (*UpdateProfileResponse, error) {
+	if req.Name == nil && req.Birth == nil {
+		return nil, fmt.Errorf("%w: at least one field is required", model.ErrBadRequest)
+	}
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return nil, fmt.Errorf("%w: name must not be empty", model.ErrBadRequest)
+		}
+		req.Name = &name
+
+		exists, err := s.repo.ExistsByName(name)
+		if err != nil {
+			return nil, err
+		}
+		// Allow keeping the same name
+		current, err := s.repo.FindMemberByID(memberID)
+		if err != nil {
+			return nil, err
+		}
+		if exists && (current == nil || current.Name != name) {
+			return nil, fmt.Errorf("%w: name already exists", model.ErrConflict)
+		}
+	}
+
+	if req.Birth != nil {
+		year := *req.Birth
+		if year < 1920 || year > time.Now().Year()-10 {
+			return nil, fmt.Errorf("%w: invalid birth year", model.ErrBadRequest)
+		}
+	}
+
+	if err := s.repo.UpdateProfile(memberID, req.Name, req.Birth); err != nil {
+		return nil, err
+	}
+
+	memberRecord, err := s.repo.FindMemberByID(memberID)
+	if err != nil {
+		return nil, err
+	}
+	accessToken, err := s.jwtService.GenerateAccessToken(memberRecord)
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, err := s.jwtService.GenerateRefreshToken(memberRecord)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UpdateProfileResponse{
+		Token: TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken},
+	}, nil
 }
 
 func (s *Service) DeleteMember(currentMemberID, memberID int64) error {

@@ -27,6 +27,10 @@ func (s *Service) Uninterest(memberID int64, articleID string) error {
 	return s.repo.MarkUninterested(memberID, articleID)
 }
 
+func (s *Service) Likes(memberID int64, limit int, from string) (*LikedArticlesPage, error) {
+	return s.repo.ListLikes(memberID, normalizeLimit(limit), from)
+}
+
 func (s *Service) Bookmarks(memberID int64, limit int, from string) (*BookmarkPage, error) {
 	return s.repo.ListBookmarks(memberID, normalizeLimit(limit), from)
 }

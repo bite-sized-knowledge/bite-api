@@ -55,3 +55,8 @@ type ArticleSearchPage struct {
 	Articles []FeedItem `json:"articles"`
 	Next     string     `json:"next,omitempty"`
 }
+
+type LikedArticlesPage struct {
+	Articles []FeedItem `json:"articles"`
+	Next     string     `json:"next,omitempty"`
+}

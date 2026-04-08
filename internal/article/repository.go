@@ -275,6 +275,34 @@ func (r *Repository) ListHistory(memberID int64, limit int, from *int64) (*Artic
 	return &ArticleHistoryPage{Articles: feedItems, Next: next}, nil
 }
 
+func (r *Repository) ListLikes(memberID int64, limit int, from string) (*LikedArticlesPage, error) {
+	condition := `al.member_id = ? AND al.is_deleted = false`
+	args := []any{memberID}
+	if from != "" {
+		condition += ` AND a.sort_key < ?`
+		args = append(args, from)
+	}
+	items, err := r.fetchRows(`
+		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+		       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+		       true AS is_liked,
+		       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+		       a.sort_key
+		FROM article_like al
+		JOIN article a ON a.article_id = al.article_id
+		JOIN blog b ON b.blog_id = a.blog_id
+		LEFT JOIN interest i ON i.interest_id = a.category_id
+		WHERE `+condition+`
+		ORDER BY al.updated_at DESC
+		LIMIT ?`, append([]any{memberID}, append(args, limit+1)...)...)
+	if err != nil {
+		return nil, err
+	}
+	page, next := paginateBySortKey(items, limit)
+	return &LikedArticlesPage{Articles: page, Next: next}, nil
+}
+
 func (r *Repository) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
 	// The search endpoint is anonymous (no auth middleware), so there is
 	// no member context to hydrate isLiked / isArchived. The web client

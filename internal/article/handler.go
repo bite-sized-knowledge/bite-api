@@ -29,6 +29,7 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 	protected.POST("/:articleId/likes", h.like)
 	protected.DELETE("/:articleId/likes", h.unlike)
 	protected.POST("/:articleId/uninterests", h.uninterest)
+	protected.GET("/likes", h.likes)
 	protected.GET("/bookmarks", h.bookmarks)
 	protected.POST("/:articleId/bookmarks", h.bookmark)
 	protected.DELETE("/:articleId/bookmarks", h.unbookmark)
@@ -68,6 +69,18 @@ func (h *Handler) uninterest(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.Success(c, nil)
+}
+
+func (h *Handler) likes(c echo.Context) error {
+	memberID, err := middleware.CurrentMemberID(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	result, err := h.service.Likes(memberID, queryInt(c, "limit"), c.QueryParam("from"))
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.Success(c, result)
 }
 
 func (h *Handler) bookmarks(c echo.Context) error {

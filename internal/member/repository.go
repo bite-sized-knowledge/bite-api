@@ -2,6 +2,7 @@ package member
 
 import (
 	"database/sql"
+	"strings"
 
 	"github.com/bite-sized/bite-api/internal/model"
 	"github.com/jmoiron/sqlx"
@@ -117,6 +118,27 @@ func (r *Repository) ReplaceInterests(memberID int64, interestIDs []int64) error
 		}
 	}
 	return tx.Commit()
+}
+
+func (r *Repository) UpdateProfile(memberID int64, name *string, birth *int) error {
+	sets := []string{}
+	args := []any{}
+	if name != nil {
+		sets = append(sets, "name = ?")
+		args = append(args, *name)
+	}
+	if birth != nil {
+		sets = append(sets, "birth = ?")
+		args = append(args, *birth)
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
+	args = append(args, memberID)
+	query := "UPDATE member SET " + strings.Join(sets, ", ") + " WHERE member_id = ?"
+	_, err := r.db.Exec(query, args...)
+	return err
 }
 
 func (r *Repository) GetMemberInterestIDs(memberID int64) ([]int64, error) {

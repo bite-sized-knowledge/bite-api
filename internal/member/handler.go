@@ -34,6 +34,7 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.Middlewar
 	protected.PUT("/interests", h.updateInterests)
 	protected.GET("/interests", h.getInterests)
 	protected.DELETE("/:memberId", h.deleteMember)
+	protected.PUT("/profile", h.updateProfile)
 }
 
 func (h *Handler) createGuest(c echo.Context) error {
@@ -98,6 +99,23 @@ func (h *Handler) getInterests(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	return response.Success(c, ids)
+}
+
+func (h *Handler) updateProfile(c echo.Context) error {
+	memberID, err := middleware.CurrentMemberID(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	var req UpdateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return response.Error(c, err)
+	}
+	result, err := h.service.UpdateProfile(memberID, req)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	authcookie.Set(c, result.Token.RefreshToken, h.refreshExpiry)
+	return response.Success(c, result)
 }
 
 func (h *Handler) deleteMember(c echo.Context) error {
