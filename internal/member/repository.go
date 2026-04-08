@@ -33,6 +33,21 @@ func (r *Repository) InterestExists(interestID int64) (bool, error) {
 	return exists, err
 }
 
+func (r *Repository) AllInterestsExist(ids []int64) (bool, error) {
+	if len(ids) == 0 {
+		return false, nil
+	}
+	query, args, err := sqlx.In(`SELECT COUNT(*) FROM interest WHERE interest_id IN (?)`, ids)
+	if err != nil {
+		return false, err
+	}
+	var count int
+	if err := r.db.Get(&count, r.db.Rebind(query), args...); err != nil {
+		return false, err
+	}
+	return count == len(ids), nil
+}
+
 func (r *Repository) AddMemberInterest(memberID, interestID int64) error {
 	_, err := r.db.Exec(`INSERT INTO member_interest (member_id, interest_id) VALUES (?, ?)`, memberID, interestID)
 	return err
@@ -62,15 +77,18 @@ func (r *Repository) ExistsByName(name string) (bool, error) {
 	return exists, err
 }
 
-func (r *Repository) IsEmailVerified(email string, memberID int64) (bool, error) {
+func (r *Repository) IsEmailVerified(email string) (bool, error) {
 	var exists bool
-	err := r.db.Get(&exists, `SELECT EXISTS(SELECT 1 FROM email_verify WHERE email = ? AND member_id = ? AND is_verified = true)`, email, memberID)
+	err := r.db.Get(&exists, `SELECT EXISTS(SELECT 1 FROM email_verify WHERE email = ? AND is_verified = true)`, email)
 	return exists, err
 }
 
-func (r *Repository) JoinMember(memberID int64, email, hashedPassword string, birth int) error {
-	_, err := r.db.Exec(`UPDATE member SET email = ?, password = ?, birth = ?, role = 'ROLE_USER', status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE member_id = ?`, email, hashedPassword, birth, memberID)
-	return err
+func (r *Repository) CreateMember(email, hashedPassword string, birth int, name string) (int64, error) {
+	result, err := r.db.Exec(`INSERT INTO member (email, password, birth, name, status, role) VALUES (?, ?, ?, ?, 'ACTIVE', 'ROLE_USER')`, email, hashedPassword, birth, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
 }
 
 func (r *Repository) DeleteEmailVerification(email string) error {
@@ -81,4 +99,28 @@ func (r *Repository) DeleteEmailVerification(email string) error {
 func (r *Repository) SoftDeleteMember(memberID int64) error {
 	_, err := r.db.Exec(`UPDATE member SET status = 'DELETED', updated_at = CURRENT_TIMESTAMP WHERE member_id = ?`, memberID)
 	return err
+}
+
+func (r *Repository) ReplaceInterests(memberID int64, interestIDs []int64) error {
+	tx, err := r.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM member_interest WHERE member_id = ?`, memberID); err != nil {
+		return err
+	}
+	for _, id := range interestIDs {
+		if _, err := tx.Exec(`INSERT INTO member_interest (member_id, interest_id) VALUES (?, ?)`, memberID, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (r *Repository) GetMemberInterestIDs(memberID int64) ([]int64, error) {
+	var ids []int64
+	err := r.db.Select(&ids, `SELECT interest_id FROM member_interest WHERE member_id = ? ORDER BY interest_id`, memberID)
+	return ids, err
 }

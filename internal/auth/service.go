@@ -83,8 +83,16 @@ func (s *Service) Refresh(req RefreshRequest) (*member.TokenResponse, error) {
 	return &member.TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
-func (s *Service) SendEmailVerification(emailAddress string, memberID int64) error {
-	return s.sendVerification(strings.TrimSpace(emailAddress), memberID, verifyTypeRegister)
+func (s *Service) SendEmailVerification(emailAddress string) error {
+	email := strings.TrimSpace(emailAddress)
+	existing, err := s.repo.FindMemberByEmail(email)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return fmt.Errorf("%w: email already exists", model.ErrBadRequest)
+	}
+	return s.sendVerification(email, nil, verifyTypeRegister)
 }
 
 func (s *Service) SendPasswordResetEmail(emailAddress string) error {
@@ -98,10 +106,10 @@ func (s *Service) SendPasswordResetEmail(emailAddress string) error {
 	if memberRecord.Status != "ACTIVE" {
 		return fmt.Errorf("%w: member is not active", model.ErrBadRequest)
 	}
-	return s.sendVerification(memberRecord.Email, memberRecord.MemberID, verifyTypePasswordReset)
+	return s.sendVerification(memberRecord.Email, &memberRecord.MemberID, verifyTypePasswordReset)
 }
 
-func (s *Service) sendVerification(emailAddress string, memberID int64, verifyType string) error {
+func (s *Service) sendVerification(emailAddress string, memberID *int64, verifyType string) error {
 	code, err := generateSecureToken(32)
 	if err != nil {
 		return fmt.Errorf("failed to generate verification code: %w", err)
@@ -157,15 +165,15 @@ func (s *Service) VerifyEmail(emailAddress, code, verifyType string) error {
 	return nil
 }
 
-func (s *Service) IsVerified(emailAddress string, memberID int64) (bool, error) {
+func (s *Service) IsVerified(emailAddress string) (bool, error) {
 	verifyRecord, err := s.repo.FindEmailVerify(strings.TrimSpace(emailAddress), verifyTypeRegister)
 	if err != nil {
 		return false, err
 	}
-	if verifyRecord == nil || verifyRecord.MemberID == nil {
+	if verifyRecord == nil {
 		return false, nil
 	}
-	return verifyRecord.IsVerified && *verifyRecord.MemberID == memberID, nil
+	return verifyRecord.IsVerified, nil
 }
 
 func generateSecureToken(length int) (string, error) {

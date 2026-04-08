@@ -30,13 +30,13 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware
 	g.GET("/email/verify", h.verifyEmail)
 	g.POST("/oauth/github", oh.HandleGitHubOAuth)
 	g.POST("/oauth/google", oh.HandleGoogleOAuth)
+	g.POST("/email/request-verify", h.requestVerifyEmail)
+	g.GET("/email/is-verified", h.isVerified)
 
 	protected := g.Group("")
 	if len(authMiddleware) > 0 {
 		protected.Use(authMiddleware...)
 	}
-	protected.POST("/email/request-verify", h.requestVerifyEmail)
-	protected.GET("/email/is-verified", h.isVerified)
 	protected.POST("/password/change", h.changePassword)
 }
 
@@ -84,22 +84,14 @@ func (h *Handler) requestVerifyEmail(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, err)
 	}
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	if err := h.service.SendEmailVerification(req.Email, memberID); err != nil {
+	if err := h.service.SendEmailVerification(req.Email); err != nil {
 		return response.Error(c, err)
 	}
 	return response.Success(c, nil)
 }
 
 func (h *Handler) isVerified(c echo.Context) error {
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	result, err := h.service.IsVerified(c.QueryParam("email"), memberID)
+	result, err := h.service.IsVerified(c.QueryParam("email"))
 	if err != nil {
 		return response.Error(c, err)
 	}

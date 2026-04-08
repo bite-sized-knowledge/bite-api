@@ -62,7 +62,7 @@ func (r *Repository) FindEmailVerify(email, verifyType string) (*EmailVerify, er
 	return &verify, nil
 }
 
-func (r *Repository) UpsertEmailVerify(email, code string, memberID int64, verifyType string, expiredAt time.Time) error {
+func (r *Repository) UpsertEmailVerify(email, code string, memberID *int64, verifyType string, expiredAt time.Time) error {
 	_, err := r.db.Exec(`
 		INSERT INTO email_verify (email, verify_code, is_verified, member_id, expired_at, type)
 		VALUES (?, ?, false, ?, ?, ?)

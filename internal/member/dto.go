@@ -10,6 +10,10 @@ type JoinRequest struct {
 	Birth    int    `json:"birth"`
 }
 
+type UpdateInterestsRequest struct {
+	InterestIDs []int64 `json:"interestIds"`
+}
+
 type TokenResponse struct {
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken"`

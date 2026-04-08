@@ -24,6 +24,13 @@ func (s *Service) CreateGuestMember(req CreateGuestRequest) (*RegisterResponse, 
 	if len(req.InterestIDs) == 0 {
 		return nil, fmt.Errorf("%w: at least one interest is required", model.ErrBadRequest)
 	}
+	allExist, err := s.repo.AllInterestsExist(req.InterestIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allExist {
+		return nil, fmt.Errorf("%w: interest not found", model.ErrBadRequest)
+	}
 	name, err := s.getAvailableName()
 	if err != nil {
 		return nil, err
@@ -32,17 +39,8 @@ func (s *Service) CreateGuestMember(req CreateGuestRequest) (*RegisterResponse, 
 	if err != nil {
 		return nil, err
 	}
-	for _, interestID := range req.InterestIDs {
-		exists, err := s.repo.InterestExists(interestID)
-		if err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, fmt.Errorf("%w: interest not found", model.ErrBadRequest)
-		}
-		if err := s.repo.AddMemberInterest(memberID, interestID); err != nil {
-			return nil, err
-		}
+	if err := s.repo.ReplaceInterests(memberID, req.InterestIDs); err != nil {
+		return nil, err
 	}
 	memberRecord, err := s.repo.FindMemberByID(memberID)
 	if err != nil {
@@ -59,45 +57,49 @@ func (s *Service) CreateGuestMember(req CreateGuestRequest) (*RegisterResponse, 
 	return &RegisterResponse{MemberID: memberID, Token: TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}}, nil
 }
 
-func (s *Service) JoinMember(memberID int64, req JoinRequest) (*RegisterResponse, error) {
-	memberRecord, err := s.repo.FindMemberByID(memberID)
-	if err != nil {
-		return nil, err
-	}
-	if memberRecord == nil {
-		return nil, fmt.Errorf("%w: member not found", model.ErrBadRequest)
-	}
-	if memberRecord.Role == "ROLE_USER" || memberRecord.Role == "ROLE_ADMIN" {
-		return nil, fmt.Errorf("%w: already joined member", model.ErrBadRequest)
-	}
-	verified, err := s.repo.IsEmailVerified(strings.TrimSpace(req.Email), memberID)
+func (s *Service) RegisterMember(req JoinRequest) (*RegisterResponse, error) {
+	email := strings.TrimSpace(req.Email)
+
+	verified, err := s.repo.IsEmailVerified(email)
 	if err != nil {
 		return nil, err
 	}
 	if !verified {
 		return nil, fmt.Errorf("%w: email not verified", model.ErrBadRequest)
 	}
-	duplicate, err := s.repo.ExistsByEmail(strings.TrimSpace(req.Email))
+
+	duplicate, err := s.repo.ExistsByEmail(email)
 	if err != nil {
 		return nil, err
 	}
 	if duplicate {
 		return nil, fmt.Errorf("%w: email already exists", model.ErrBadRequest)
 	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repo.JoinMember(memberID, strings.TrimSpace(req.Email), string(hash), req.Birth); err != nil {
-		return nil, err
-	}
-	if err := s.repo.DeleteEmailVerification(strings.TrimSpace(req.Email)); err != nil {
-		return nil, err
-	}
-	memberRecord, err = s.repo.FindMemberByID(memberID)
+
+	name, err := s.getAvailableName()
 	if err != nil {
 		return nil, err
 	}
+
+	memberID, err := s.repo.CreateMember(email, string(hash), req.Birth, name)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.DeleteEmailVerification(email); err != nil {
+		return nil, err
+	}
+
+	memberRecord, err := s.repo.FindMemberByID(memberID)
+	if err != nil {
+		return nil, err
+	}
+
 	accessToken, err := s.jwtService.GenerateAccessToken(memberRecord)
 	if err != nil {
 		return nil, err
@@ -106,7 +108,26 @@ func (s *Service) JoinMember(memberID int64, req JoinRequest) (*RegisterResponse
 	if err != nil {
 		return nil, err
 	}
+
 	return &RegisterResponse{MemberID: memberID, Token: TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}}, nil
+}
+
+func (s *Service) UpdateInterests(memberID int64, interestIDs []int64) error {
+	if len(interestIDs) == 0 {
+		return fmt.Errorf("%w: at least one interest is required", model.ErrBadRequest)
+	}
+	allExist, err := s.repo.AllInterestsExist(interestIDs)
+	if err != nil {
+		return err
+	}
+	if !allExist {
+		return fmt.Errorf("%w: interest not found", model.ErrBadRequest)
+	}
+	return s.repo.ReplaceInterests(memberID, interestIDs)
+}
+
+func (s *Service) GetInterests(memberID int64) ([]int64, error) {
+	return s.repo.GetMemberInterestIDs(memberID)
 }
 
 func (s *Service) HasDuplicateName(name string) (bool, error) {

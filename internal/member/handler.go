@@ -24,13 +24,15 @@ func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
 func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
 	g := v1.Group("/members")
 	g.POST("", h.createGuest)
+	g.POST("/join", h.join)
 
 	protected := g.Group("")
 	if len(authMiddleware) > 0 {
 		protected.Use(authMiddleware...)
 	}
-	protected.POST("/join", h.join)
 	protected.GET("/name/check", h.checkName)
+	protected.PUT("/interests", h.updateInterests)
+	protected.GET("/interests", h.getInterests)
 	protected.DELETE("/:memberId", h.deleteMember)
 }
 
@@ -52,11 +54,7 @@ func (h *Handler) join(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, err)
 	}
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	result, err := h.service.JoinMember(memberID, req)
+	result, err := h.service.RegisterMember(req)
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -73,6 +71,33 @@ func (h *Handler) checkName(c echo.Context) error {
 		return response.Error(c, fmt.Errorf("%w: name already exists", model.ErrConflict))
 	}
 	return response.Success(c, nil)
+}
+
+func (h *Handler) updateInterests(c echo.Context) error {
+	memberID, err := middleware.CurrentMemberID(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	var req UpdateInterestsRequest
+	if err := c.Bind(&req); err != nil {
+		return response.Error(c, err)
+	}
+	if err := h.service.UpdateInterests(memberID, req.InterestIDs); err != nil {
+		return response.Error(c, err)
+	}
+	return response.Success(c, nil)
+}
+
+func (h *Handler) getInterests(c echo.Context) error {
+	memberID, err := middleware.CurrentMemberID(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	ids, err := h.service.GetInterests(memberID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.Success(c, ids)
 }
 
 func (h *Handler) deleteMember(c echo.Context) error {
