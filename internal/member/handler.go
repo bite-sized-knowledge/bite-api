@@ -23,13 +23,16 @@ func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
 
 func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
 	g := v1.Group("/members")
-	g.POST("", h.createGuest)
-	g.POST("/join", h.join)
+
+	regRL := middleware.RateLimit(3, 5)
+	g.POST("", h.createGuest, regRL)
+	g.POST("/join", h.join, regRL)
 
 	protected := g.Group("")
 	if len(authMiddleware) > 0 {
 		protected.Use(authMiddleware...)
 	}
+	protected.GET("/me", h.getProfile)
 	protected.GET("/name/check", h.checkName)
 	protected.PUT("/interests", h.updateInterests)
 	protected.GET("/interests", h.getInterests)
@@ -116,6 +119,18 @@ func (h *Handler) updateProfile(c echo.Context) error {
 	}
 	authcookie.Set(c, result.Token.RefreshToken, h.refreshExpiry)
 	return response.Success(c, result)
+}
+
+func (h *Handler) getProfile(c echo.Context) error {
+	memberID, err := middleware.CurrentMemberID(c)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	profile, err := h.service.GetProfile(memberID)
+	if err != nil {
+		return response.Error(c, err)
+	}
+	return response.Success(c, profile)
 }
 
 func (h *Handler) deleteMember(c echo.Context) error {

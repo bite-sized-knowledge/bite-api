@@ -23,14 +23,17 @@ func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
 func RegisterRoutes(v1 *echo.Group, h *Handler, oh *OAuthHandler, authMiddleware ...echo.MiddlewareFunc) {
 	g := v1.Group("/auth")
 
-	g.POST("/login", h.login)
+	// Rate limit: 5 requests/second with burst of 10 for auth endpoints
+	authRL := middleware.RateLimit(5, 10)
+
+	g.POST("/login", h.login, authRL)
 	g.POST("/refresh", h.refresh)
 	g.POST("/logout", h.logout)
-	g.POST("/password/reset", h.passwordReset)
+	g.POST("/password/reset", h.passwordReset, authRL)
 	g.GET("/email/verify", h.verifyEmail)
-	g.POST("/oauth/github", oh.HandleGitHubOAuth)
-	g.POST("/oauth/google", oh.HandleGoogleOAuth)
-	g.POST("/email/request-verify", h.requestVerifyEmail)
+	g.POST("/oauth/github", oh.HandleGitHubOAuth, authRL)
+	g.POST("/oauth/google", oh.HandleGoogleOAuth, authRL)
+	g.POST("/email/request-verify", h.requestVerifyEmail, authRL)
 	g.GET("/email/is-verified", h.isVerified)
 
 	protected := g.Group("")

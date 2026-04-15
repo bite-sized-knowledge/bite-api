@@ -190,6 +190,17 @@ func (s *Service) UpdateProfile(memberID int64, req UpdateProfileRequest) (*Upda
 	}, nil
 }
 
+func (s *Service) GetProfile(memberID int64) (*model.Member, error) {
+	member, err := s.repo.FindMemberByID(memberID)
+	if err != nil {
+		return nil, err
+	}
+	if member == nil {
+		return nil, fmt.Errorf("%w: member not found", model.ErrBadRequest)
+	}
+	return member, nil
+}
+
 func (s *Service) DeleteMember(currentMemberID, memberID int64) error {
 	if currentMemberID != memberID {
 		return fmt.Errorf("%w: member id mismatch", model.ErrBadRequest)

@@ -14,7 +14,6 @@ type Claims struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	Birth  *int   `json:"birth,omitempty"`
-	Gender string `json:"gender"`
 	Status string `json:"status"`
 	Role   string `json:"role"`
 	jwtv5.RegisteredClaims
@@ -50,7 +49,6 @@ func (s *Service) GenerateAccessToken(member *model.Member) (string, error) {
 		Email:  member.Email,
 		Name:   member.Name,
 		Birth:  member.Birth,
-		Gender: member.Gender,
 		Status: member.Status,
 		Role:   member.Role,
 		RegisteredClaims: jwtv5.RegisteredClaims{

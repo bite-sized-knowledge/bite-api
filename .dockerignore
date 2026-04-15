@@ -5,3 +5,5 @@
 tmp
 coverage
 **/*_test.go
+.env
+*.env
