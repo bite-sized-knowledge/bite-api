@@ -130,7 +130,15 @@ func (h *Handler) share(c echo.Context) error {
 
 func (h *Handler) recent(c echo.Context) error {
 	memberID, _ := middleware.CurrentMemberID(c)
-	result, err := h.service.Recent(memberID, queryInt(c, "limit"), c.QueryParam("from"))
+	lang := c.QueryParam("lang")
+	if lang != "ko" && lang != "en" {
+		lang = ""
+	}
+	var blogID int64
+	if raw := c.QueryParam("blogId"); raw != "" {
+		blogID, _ = strconv.ParseInt(raw, 10, 64)
+	}
+	result, err := h.service.Recent(memberID, queryInt(c, "limit"), c.QueryParam("from"), lang, blogID)
 	if err != nil {
 		return response.Error(c, err)
 	}

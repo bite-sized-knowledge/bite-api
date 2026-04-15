@@ -184,12 +184,20 @@ func (r *Repository) ListBookmarks(memberID int64, limit int, from string) (*Boo
 	return &BookmarkPage{Articles: page, Next: next}, nil
 }
 
-func (r *Repository) ListRecent(memberID int64, limit int, from string) (*RecentArticlesPage, error) {
+func (r *Repository) ListRecent(memberID int64, limit int, from string, lang string, blogID int64) (*RecentArticlesPage, error) {
 	condition := `1 = 1`
 	args := []any{memberID, memberID}
 	if from != "" {
 		condition += ` AND a.publish_sort_key < ?`
 		args = append(args, from)
+	}
+	if blogID > 0 {
+		condition += ` AND a.blog_id = ?`
+		args = append(args, blogID)
+	} else if lang == "ko" {
+		condition += ` AND a.lang = 'ko'`
+	} else if lang == "en" {
+		condition += ` AND (a.lang != 'ko' OR a.lang IS NULL)`
 	}
 	items, err := r.fetchRows(`
 		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,

@@ -47,8 +47,8 @@ func (s *Service) Share(memberID int64, articleID string) error {
 	return s.repo.Share(memberID, articleID)
 }
 
-func (s *Service) Recent(memberID int64, limit int, from string) (*RecentArticlesPage, error) {
-	return s.repo.ListRecent(memberID, normalizeLimit(limit), from)
+func (s *Service) Recent(memberID int64, limit int, from string, lang string, blogID int64) (*RecentArticlesPage, error) {
+	return s.repo.ListRecent(memberID, normalizeLimit(limit), from, lang, blogID)
 }
 
 func (s *Service) History(memberID int64, limit int, from string) (*ArticleHistoryPage, error) {
