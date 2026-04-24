@@ -184,16 +184,20 @@ func (r *Repository) ListBookmarks(memberID int64, limit int, from string) (*Boo
 	return &BookmarkPage{Articles: page, Next: next}, nil
 }
 
-func (r *Repository) ListRecent(memberID int64, limit int, from string, lang string, blogID int64) (*RecentArticlesPage, error) {
+func (r *Repository) ListRecent(memberID int64, limit int, from string, lang string, blogIDs []int64) (*RecentArticlesPage, error) {
 	condition := `1 = 1`
 	args := []any{memberID, memberID}
 	if from != "" {
 		condition += ` AND a.publish_sort_key < ?`
 		args = append(args, from)
 	}
-	if blogID > 0 {
-		condition += ` AND a.blog_id = ?`
-		args = append(args, blogID)
+	if len(blogIDs) > 0 {
+		inQuery, inArgs, err := sqlx.In(`a.blog_id IN (?)`, blogIDs)
+		if err != nil {
+			return nil, err
+		}
+		condition += ` AND ` + inQuery
+		args = append(args, inArgs...)
 	} else if lang == "ko" {
 		condition += ` AND a.lang = 'ko'`
 	} else if lang == "en" {

@@ -2,6 +2,7 @@ package article
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/bite-sized/bite-api/internal/middleware"
 	"github.com/bite-sized/bite-api/pkg/response"
@@ -134,11 +135,19 @@ func (h *Handler) recent(c echo.Context) error {
 	if lang != "ko" && lang != "en" {
 		lang = ""
 	}
-	var blogID int64
+	var blogIDs []int64
 	if raw := c.QueryParam("blogId"); raw != "" {
-		blogID, _ = strconv.ParseInt(raw, 10, 64)
+		for _, s := range strings.Split(raw, ",") {
+			s = strings.TrimSpace(s)
+			if id, err := strconv.ParseInt(s, 10, 64); err == nil && id > 0 {
+				blogIDs = append(blogIDs, id)
+			}
+		}
+		if len(blogIDs) > 50 {
+			blogIDs = blogIDs[:50]
+		}
 	}
-	result, err := h.service.Recent(memberID, queryInt(c, "limit"), c.QueryParam("from"), lang, blogID)
+	result, err := h.service.Recent(memberID, queryInt(c, "limit"), c.QueryParam("from"), lang, blogIDs)
 	if err != nil {
 		return response.Error(c, err)
 	}

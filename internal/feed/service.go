@@ -25,7 +25,7 @@ func (s *Service) Feed(memberID int64) ([]article.FeedItem, error) {
 		}
 	}
 
-	recent, err := s.articleRepo.ListRecent(memberID, 30, "", "", 0)
+	recent, err := s.articleRepo.ListRecent(memberID, 30, "", "", nil)
 	if err != nil {
 		return nil, err
 	}
