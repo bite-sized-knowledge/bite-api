@@ -20,9 +20,13 @@ func NewHandler(service *Service) *Handler {
 func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc) {
 	g := v1.Group("/articles")
 
+	// Anonymous + IP-based rate limit: search hits a FULLTEXT-indexed scan,
+	// so cap bursts to protect the DB from automated scraping.
+	searchRL := middleware.RateLimit(5, 10)
+
 	// Public endpoints (optional auth)
 	g.GET("/recent", h.recent, optionalAuth)
-	g.GET("/search", h.search)
+	g.GET("/search", h.search, searchRL)
 
 	// Protected endpoints
 	protected := g.Group("")
@@ -193,11 +197,11 @@ func (h *Handler) byIDs(c echo.Context) error {
 func queryInt(c echo.Context, key string) int {
 	value := c.QueryParam(key)
 	if value == "" {
-		return 10
+		return 0
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed < 1 || parsed > 100 {
-		return 10
+	if err != nil {
+		return 0
 	}
 	return parsed
 }

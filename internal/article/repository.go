@@ -315,6 +315,11 @@ func (r *Repository) ListLikes(memberID int64, limit int, from string) (*LikedAr
 	return &LikedArticlesPage{Articles: page, Next: next}, nil
 }
 
+// articleSearchMatch is the FULLTEXT MATCH expression reused in WHERE and
+// ORDER BY. Using the byte-identical expression (and same bind value) lets
+// MySQL reuse the FULLTEXT scan instead of recomputing scores per row.
+const articleSearchMatch = `MATCH(a.title, a.description, a.keywords) AGAINST (? IN BOOLEAN MODE)`
+
 func (r *Repository) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
 	// The search endpoint is anonymous (no auth middleware), so there is
 	// no member context to hydrate isLiked / isArchived. The web client
@@ -322,13 +327,14 @@ func (r *Repository) Search(query string, limit int, from string) (*ArticleSearc
 	// run the same join as ListRecent with a hardcoded zero member_id —
 	// both EXISTS sub-queries then return false for every row, which is
 	// the correct "not interacted" state for an anonymous caller.
-	likePattern := "%" + query + "%"
-	condition := `a.title LIKE ? OR a.description LIKE ?`
-	args := []any{int64(0), int64(0), likePattern, likePattern}
+	booleanQuery := buildBooleanFulltextQuery(query)
+	condition := articleSearchMatch
+	args := []any{int64(0), int64(0), booleanQuery}
 	if from != "" {
-		condition = `(` + condition + `) AND a.publish_sort_key < ?`
+		condition += ` AND a.publish_sort_key < ?`
 		args = append(args, from)
 	}
+	args = append(args, booleanQuery, limit+1)
 	items, err := r.fetchRows(`
 		SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
 		       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
@@ -340,13 +346,22 @@ func (r *Repository) Search(query string, limit int, from string) (*ArticleSearc
 		JOIN blog b ON b.blog_id = a.blog_id
 		LEFT JOIN interest i ON i.interest_id = a.category_id
 		WHERE `+condition+`
-		ORDER BY a.publish_sort_key DESC
-		LIMIT ?`, append(args, limit+1)...)
+		ORDER BY `+articleSearchMatch+` DESC, a.publish_sort_key DESC
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
 	page, next := paginateBySortKey(items, limit)
 	return &ArticleSearchPage{Articles: page, Next: next}, nil
+}
+
+// buildBooleanFulltextQuery wraps user input as a phrase, neutralizing
+// BOOLEAN MODE operators (+, -, *, ~, etc). Embedded `"` are stripped
+// because BOOLEAN MODE has no escape character inside phrases.
+func buildBooleanFulltextQuery(query string) string {
+	cleaned := strings.ReplaceAll(query, `"`, "")
+	cleaned = strings.TrimSpace(cleaned)
+	return `"` + cleaned + `"`
 }
 
 func (r *Repository) GetArticleURL(articleID string) (string, error) {

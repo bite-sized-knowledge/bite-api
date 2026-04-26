@@ -3,9 +3,13 @@ package article
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/bite-sized/bite-api/internal/model"
 )
+
+const searchQueryMaxLen = 100
 
 type Service struct {
 	repo *Repository
@@ -64,7 +68,22 @@ func (s *Service) History(memberID int64, limit int, from string) (*ArticleHisto
 }
 
 func (s *Service) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
-	return s.repo.Search(query, normalizeLimit(limit), from)
+	trimmed, err := validateSearchQuery(query)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.Search(trimmed, normalizeLimit(limit), from)
+}
+
+func validateSearchQuery(query string) (string, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return "", fmt.Errorf("%w: query is required", model.ErrBadRequest)
+	}
+	if utf8.RuneCountInString(trimmed) > searchQueryMaxLen {
+		return "", fmt.Errorf("%w: query exceeds %d characters", model.ErrBadRequest, searchQueryMaxLen)
+	}
+	return trimmed, nil
 }
 
 func (s *Service) ByIDs(memberID int64, req ByIDsRequest) ([]FeedItem, error) {
@@ -72,8 +91,11 @@ func (s *Service) ByIDs(memberID int64, req ByIDsRequest) ([]FeedItem, error) {
 }
 
 func normalizeLimit(limit int) int {
-	if limit <= 0 || limit > 50 {
+	if limit <= 0 {
 		return 10
+	}
+	if limit > 50 {
+		return 50
 	}
 	return limit
 }
