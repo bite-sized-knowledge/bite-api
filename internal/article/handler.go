@@ -27,6 +27,7 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 	// Public endpoints (optional auth)
 	g.GET("/recent", h.recent, optionalAuth)
 	g.GET("/search", h.search, searchRL)
+	g.GET("/suggest", h.suggest)
 
 	// Protected endpoints
 	protected := g.Group("")
@@ -225,6 +226,13 @@ func queryFloat64Ptr(c echo.Context, key string) *float64 {
 		return nil
 	}
 	return &parsed
+}
+
+func (h *Handler) suggest(c echo.Context) error {
+	prefix := c.QueryParam("q")
+	limit := queryInt(c, "limit")
+	suggestions := h.service.Suggest(prefix, limit)
+	return response.Success(c, map[string]any{"suggestions": suggestions})
 }
 
 func (h *Handler) byIDs(c echo.Context) error {

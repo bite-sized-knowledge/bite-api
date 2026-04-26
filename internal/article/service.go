@@ -145,6 +145,27 @@ func (s *Service) ByIDs(memberID int64, req ByIDsRequest) ([]FeedItem, error) {
 	return s.repo.GetByIDs(memberID, req.ArticleIDs)
 }
 
+// Suggest forwards to recsys-serving's popular-query suggest. Always returns
+// an empty slice (never nil) so the JSON response stays well-formed even when
+// recsys is unavailable.
+func (s *Service) Suggest(prefix string, limit int) []string {
+	if s.recsysClient == nil || !s.recsysSearchEnabled {
+		return []string{}
+	}
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	suggestions, err := s.recsysClient.Suggest(prefix, limit)
+	if err != nil {
+		slog.Warn("recsys suggest failed", "err", err)
+		return []string{}
+	}
+	if suggestions == nil {
+		return []string{}
+	}
+	return suggestions
+}
+
 func normalizeLimit(limit int) int {
 	if limit <= 0 {
 		return 10

@@ -106,6 +106,37 @@ func (c *Client) Search(req SearchRequest) (SearchResult, error) {
 	return SearchResult{Articles: payload.Articles, Next: payload.Next}, nil
 }
 
+func (c *Client) Suggest(prefix string, limit int) ([]string, error) {
+	q := url.Values{}
+	q.Set("q", prefix)
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	endpoint := fmt.Sprintf("%s/search/suggest?%s", c.baseURL, q.Encode())
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("recsys suggest failed with status %d", resp.StatusCode)
+	}
+	var payload struct {
+		Suggestions []string `json:"suggestions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload.Suggestions, nil
+}
+
 func (c *Client) fetchArticleIDs(endpoint string) ([]string, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
