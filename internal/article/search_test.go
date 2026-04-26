@@ -99,10 +99,10 @@ func TestServiceSearchValidationShortCircuits(t *testing.T) {
 	// test would panic. Validation must reject before reaching the repo.
 	s := &Service{repo: nil}
 
-	if _, err := s.Search("", 10, ""); !errors.Is(err, model.ErrBadRequest) {
+	if _, err := s.Search("", 10, "", SearchOptions{}); !errors.Is(err, model.ErrBadRequest) {
 		t.Fatalf("expected ErrBadRequest, got %v", err)
 	}
-	if _, err := s.Search(strings.Repeat("a", 200), 10, ""); !errors.Is(err, model.ErrBadRequest) {
+	if _, err := s.Search(strings.Repeat("a", 200), 10, "", SearchOptions{}); !errors.Is(err, model.ErrBadRequest) {
 		t.Fatalf("expected ErrBadRequest for over-long, got %v", err)
 	}
 }

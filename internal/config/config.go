@@ -18,8 +18,9 @@ type Config struct {
 	JWTRefreshExpiry   time.Duration
 	ResendAPIKey       string
 	EmailFrom          string
-	RecsysBaseURL      string
-	RecsysAPIKey       string
+	RecsysBaseURL       string
+	RecsysAPIKey        string
+	RecsysSearchEnabled bool
 	AppBaseURL         string
 	AppEnv             string
 	GitHubClientID     string
@@ -41,8 +42,9 @@ func Load() *Config {
 		JWTRefreshExpiry:   getDurationEnv("JWT_REFRESH_EXPIRY", 365*24*time.Hour),
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
 		EmailFrom:          getEnv("EMAIL_FROM", "Bite <noreply@bite-sized.xyz>"),
-		RecsysBaseURL:      getEnv("RECSYS_BASE_URL", "http://localhost:8001"),
-		RecsysAPIKey:       getEnv("RECSYS_API_KEY", ""),
+		RecsysBaseURL:       getEnv("RECSYS_BASE_URL", "http://localhost:8001"),
+		RecsysAPIKey:        getEnv("RECSYS_API_KEY", ""),
+		RecsysSearchEnabled: getBoolEnv("RECSYS_SEARCH_ENABLED", false),
 		AppBaseURL:         getEnv("APP_BASE_URL", "http://localhost:8080"),
 		AppEnv:             getEnv("APP_ENV", "local"),
 		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
@@ -81,4 +83,18 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func getBoolEnv(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "1", "true", "TRUE", "True":
+		return true
+	case "0", "false", "FALSE", "False":
+		return false
+	}
+	return fallback
 }

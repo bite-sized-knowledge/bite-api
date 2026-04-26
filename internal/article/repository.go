@@ -320,6 +320,50 @@ func (r *Repository) ListLikes(memberID int64, limit int, from string) (*LikedAr
 // MySQL reuse the FULLTEXT scan instead of recomputing scores per row.
 const articleSearchMatch = `MATCH(a.title, a.description, a.keywords) AGAINST (? IN BOOLEAN MODE)`
 
+// articleHydrationSelect is the shared SELECT/JOIN block used for any path
+// that returns FeedItem-shaped article rows (Search, GetArticlesByIDs...).
+// memberID is bound twice (is_liked + is_archived).
+const articleHydrationSelect = `
+	SELECT a.article_id, a.title, a.description, a.keywords, a.url, a.thumbnail, a.like_count, a.bookmark_count, a.share_count, a.published_at,
+	       a.category_id, i.name AS category_name, i.image AS category_image, i.thumbnail AS category_thumbnail,
+	       b.blog_id, b.title AS blog_title, b.favicon AS blog_favicon,
+	       EXISTS(SELECT 1 FROM article_like al WHERE al.article_id = a.article_id AND al.member_id = ? AND al.is_deleted = false) AS is_liked,
+	       EXISTS(SELECT 1 FROM article_bookmark ab WHERE ab.article_id = a.article_id AND ab.member_id = ? AND ab.is_deleted = false) AS is_archived,
+	       a.publish_sort_key AS sort_key
+	FROM article a
+	JOIN blog b ON b.blog_id = a.blog_id
+	LEFT JOIN interest i ON i.interest_id = a.category_id
+`
+
+// GetArticlesByIDsPreservingOrder hydrates the given article IDs (e.g. from
+// recsys hybrid search) into FeedItems, preserving the input ordering. The
+// rsys ranker decided the order; we must not reshuffle.
+func (r *Repository) GetArticlesByIDsPreservingOrder(ids []string, memberID int64) ([]FeedItem, error) {
+	if len(ids) == 0 {
+		return []FeedItem{}, nil
+	}
+	inQuery, inArgs, err := sqlx.In(`a.article_id IN (?)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	args := append([]any{memberID, memberID}, inArgs...)
+	rows, err := r.fetchRows(articleHydrationSelect+` WHERE `+inQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]FeedItem, len(rows))
+	for _, row := range rows {
+		byID[row.ArticleID] = row.toFeedItem()
+	}
+	items := make([]FeedItem, 0, len(ids))
+	for _, id := range ids {
+		if item, ok := byID[id]; ok {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
 func (r *Repository) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
 	// The search endpoint is anonymous (no auth middleware), so there is
 	// no member context to hydrate isLiked / isArchived. The web client

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,9 +32,78 @@ func (c *Client) GetFeed(memberID int64) ([]string, error) {
 	return c.fetchArticleIDs(endpoint)
 }
 
-func (c *Client) Search(query string) ([]string, error) {
-	endpoint := fmt.Sprintf("%s/search?query=%s", c.baseURL, url.QueryEscape(query))
-	return c.fetchArticleIDs(endpoint)
+type SearchRequest struct {
+	Query           string
+	Limit           int
+	From            string
+	CategoryID      *int64
+	Lang            string
+	BlogID          *int64
+	PublishedAfter  *float64
+	PublishedBefore *float64
+	Mode            string
+}
+
+type SearchResult struct {
+	Articles []string
+	Next     string
+}
+
+func (c *Client) Search(req SearchRequest) (SearchResult, error) {
+	q := url.Values{}
+	q.Set("query", req.Query)
+	if req.Limit > 0 {
+		q.Set("limit", strconv.Itoa(req.Limit))
+	}
+	if req.From != "" {
+		q.Set("cursor", req.From)
+	}
+	if req.CategoryID != nil {
+		q.Set("category_id", strconv.FormatInt(*req.CategoryID, 10))
+	}
+	if req.Lang != "" {
+		q.Set("lang", req.Lang)
+	}
+	if req.BlogID != nil {
+		q.Set("blog_id", strconv.FormatInt(*req.BlogID, 10))
+	}
+	if req.PublishedAfter != nil {
+		q.Set("published_after", strconv.FormatFloat(*req.PublishedAfter, 'f', -1, 64))
+	}
+	if req.PublishedBefore != nil {
+		q.Set("published_before", strconv.FormatFloat(*req.PublishedBefore, 'f', -1, 64))
+	}
+	if req.Mode != "" {
+		q.Set("mode", req.Mode)
+	}
+
+	endpoint := fmt.Sprintf("%s/search?%s", c.baseURL, q.Encode())
+	httpReq, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if c.apiKey != "" {
+		httpReq.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return SearchResult{}, fmt.Errorf("recsys search failed with status %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Articles []string `json:"articles"`
+		Next     string   `json:"next"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return SearchResult{}, err
+	}
+
+	return SearchResult{Articles: payload.Articles, Next: payload.Next}, nil
 }
 
 func (c *Client) fetchArticleIDs(endpoint string) ([]string, error) {

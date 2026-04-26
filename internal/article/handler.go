@@ -171,11 +171,60 @@ func (h *Handler) history(c echo.Context) error {
 }
 
 func (h *Handler) search(c echo.Context) error {
-	result, err := h.service.Search(c.QueryParam("query"), queryInt(c, "limit"), c.QueryParam("from"))
+	memberID, _ := middleware.CurrentMemberID(c)
+	opts := SearchOptions{
+		MemberID: memberID,
+		Lang:     normalizedLang(c.QueryParam("lang")),
+		Mode:     c.QueryParam("mode"),
+	}
+	if v := queryInt64Ptr(c, "category_id"); v != nil {
+		opts.CategoryID = v
+	}
+	if v := queryInt64Ptr(c, "blog_id"); v != nil {
+		opts.BlogID = v
+	}
+	if v := queryFloat64Ptr(c, "published_after"); v != nil {
+		opts.PublishedAfter = v
+	}
+	if v := queryFloat64Ptr(c, "published_before"); v != nil {
+		opts.PublishedBefore = v
+	}
+	result, err := h.service.Search(c.QueryParam("query"), queryInt(c, "limit"), c.QueryParam("from"), opts)
 	if err != nil {
 		return response.Error(c, err)
 	}
 	return response.Success(c, result)
+}
+
+func normalizedLang(raw string) string {
+	if raw == "ko" || raw == "en" {
+		return raw
+	}
+	return ""
+}
+
+func queryInt64Ptr(c echo.Context, key string) *int64 {
+	raw := c.QueryParam(key)
+	if raw == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func queryFloat64Ptr(c echo.Context, key string) *float64 {
+	raw := c.QueryParam(key)
+	if raw == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func (h *Handler) byIDs(c echo.Context) error {

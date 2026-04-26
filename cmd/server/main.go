@@ -48,7 +48,7 @@ func main() {
 	oauthHandler := auth.NewOAuthHandler(oauthService, cfg.JWTRefreshExpiry)
 
 	articleRepo := article.NewRepository(db)
-	articleService := article.NewService(articleRepo)
+	articleService := article.NewService(articleRepo, recsysClient, cfg.RecsysSearchEnabled)
 	articleHandler := article.NewHandler(articleService)
 
 	blogRepo := blog.NewRepository(db)

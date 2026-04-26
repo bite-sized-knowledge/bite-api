@@ -2,21 +2,29 @@ package article
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/bite-sized/bite-api/internal/model"
+	"github.com/bite-sized/bite-api/internal/recsys"
 )
 
 const searchQueryMaxLen = 100
 
 type Service struct {
-	repo *Repository
+	repo                 *Repository
+	recsysClient         *recsys.Client
+	recsysSearchEnabled  bool
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, recsysClient *recsys.Client, recsysSearchEnabled bool) *Service {
+	return &Service{
+		repo:                repo,
+		recsysClient:        recsysClient,
+		recsysSearchEnabled: recsysSearchEnabled,
+	}
 }
 
 func (s *Service) Like(memberID int64, articleID string) error {
@@ -67,12 +75,59 @@ func (s *Service) History(memberID int64, limit int, from string) (*ArticleHisto
 	return s.repo.ListHistory(memberID, normalizeLimit(limit), cursor)
 }
 
-func (s *Service) Search(query string, limit int, from string) (*ArticleSearchPage, error) {
+// SearchOptions carries optional filters and the hybrid mode hint for the
+// recsys-backed search path. The fallback path (MySQL FULLTEXT) ignores filters
+// other than the query — adding them there is a future PR.
+type SearchOptions struct {
+	MemberID        int64
+	CategoryID      *int64
+	Lang            string
+	BlogID          *int64
+	PublishedAfter  *float64
+	PublishedBefore *float64
+	Mode            string
+}
+
+func (s *Service) Search(query string, limit int, from string, opts SearchOptions) (*ArticleSearchPage, error) {
 	trimmed, err := validateSearchQuery(query)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.Search(trimmed, normalizeLimit(limit), from)
+	normalized := normalizeLimit(limit)
+
+	if s.recsysSearchEnabled && s.recsysClient != nil {
+		page, err := s.searchViaRecsys(trimmed, normalized, from, opts)
+		if err == nil {
+			return page, nil
+		}
+		// fallback to MySQL FULLTEXT — observable so the operator notices.
+		slog.Warn("recsys search failed, falling back to MySQL FULLTEXT",
+			"err", err, "query_len", utf8.RuneCountInString(trimmed))
+	}
+	return s.repo.Search(trimmed, normalized, from)
+}
+
+func (s *Service) searchViaRecsys(query string, limit int, from string, opts SearchOptions) (*ArticleSearchPage, error) {
+	req := recsys.SearchRequest{
+		Query:           query,
+		Limit:           limit,
+		From:            from,
+		CategoryID:      opts.CategoryID,
+		Lang:            opts.Lang,
+		BlogID:          opts.BlogID,
+		PublishedAfter:  opts.PublishedAfter,
+		PublishedBefore: opts.PublishedBefore,
+		Mode:            opts.Mode,
+	}
+	result, err := s.recsysClient.Search(req)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.repo.GetArticlesByIDsPreservingOrder(result.Articles, opts.MemberID)
+	if err != nil {
+		return nil, err
+	}
+	return &ArticleSearchPage{Articles: items, Next: result.Next}, nil
 }
 
 func validateSearchQuery(query string) (string, error) {

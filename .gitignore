@@ -5,3 +5,4 @@
 *.dylib
 vendor/
 .DS_Store
+/bite-api
