@@ -79,8 +79,8 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 	}
 
 	queryText := truncateRunes(strings.TrimSpace(req.QueryText), queryTextMaxLen)
-	queryNormHash := strings.TrimSpace(req.QueryNormHash)
-	if queryNormHash == "" && queryText != "" {
+	var queryNormHash string
+	if queryText != "" {
 		queryNormHash = normalizeAndHashQuery(queryText)
 	}
 
