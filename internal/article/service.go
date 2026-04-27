@@ -127,7 +127,7 @@ func (s *Service) searchViaRecsys(query string, limit int, from string, opts Sea
 	if err != nil {
 		return nil, err
 	}
-	return &ArticleSearchPage{Articles: items, Next: result.Next}, nil
+	return &ArticleSearchPage{Articles: items, Next: result.Next, QueryID: result.QueryID}, nil
 }
 
 func validateSearchQuery(query string) (string, error) {

@@ -47,6 +47,7 @@ type SearchRequest struct {
 type SearchResult struct {
 	Articles []string
 	Next     string
+	QueryID  string
 }
 
 func (c *Client) Search(req SearchRequest) (SearchResult, error) {
@@ -98,12 +99,13 @@ func (c *Client) Search(req SearchRequest) (SearchResult, error) {
 	var payload struct {
 		Articles []string `json:"articles"`
 		Next     string   `json:"next"`
+		QueryID  string   `json:"query_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return SearchResult{}, err
 	}
 
-	return SearchResult{Articles: payload.Articles, Next: payload.Next}, nil
+	return SearchResult{Articles: payload.Articles, Next: payload.Next, QueryID: payload.QueryID}, nil
 }
 
 func (c *Client) Suggest(prefix string, limit int) ([]string, error) {

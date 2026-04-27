@@ -1,6 +1,17 @@
 package event
 
-import "github.com/jmoiron/sqlx"
+import (
+	"database/sql"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func nullableStr(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
 
 type input struct {
 	EventUUID     string
@@ -18,6 +29,9 @@ type input struct {
 	AppVersion    string
 	Metadata      []byte
 	OccurredAt    string
+	QueryID       string
+	QueryText     string
+	QueryNormHash string
 }
 
 type Repository struct {
@@ -55,8 +69,11 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 			device_type,
 			app_version,
 			metadata,
-			occurred_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			occurred_at,
+			query_id,
+			query_text,
+			query_norm_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.EventUUID,
 		event.MemberID,
 		event.DeviceID,
@@ -72,6 +89,9 @@ func (r *Repository) Create(event input, upsertHistory bool) error {
 		event.AppVersion,
 		event.Metadata,
 		event.OccurredAt,
+		nullableStr(event.QueryID),
+		nullableStr(event.QueryText),
+		nullableStr(event.QueryNormHash),
 	)
 	if err != nil {
 		return err

@@ -23,6 +23,11 @@ type CreateEventRequest struct {
 	OccurredAtLegacy *time.Time      `json:"occurredAt"`
 	Timestamp        *int64          `json:"timestamp"`
 
+	// 검색 분석 (S_IMP / S_PREVIEW / S_CLICK 시 첨부)
+	QueryID       string `json:"query_id"`
+	QueryText     string `json:"query_text"`
+	QueryNormHash string `json:"query_norm_hash"`
+
 	LegacyTargetType string `json:"targetType"`
 	LegacyTargetID   string `json:"targetId"`
 	LegacyEventType  string `json:"eventType"`

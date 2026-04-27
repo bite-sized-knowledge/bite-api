@@ -54,6 +54,7 @@ type ArticleHistoryPage struct {
 type ArticleSearchPage struct {
 	Articles []FeedItem `json:"articles"`
 	Next     string     `json:"next,omitempty"`
+	QueryID  string     `json:"query_id,omitempty"`
 }
 
 type LikedArticlesPage struct {

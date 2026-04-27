@@ -2,6 +2,7 @@ package event
 
 import (
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -9,6 +10,27 @@ import (
 
 	"github.com/bite-sized/bite-api/internal/model"
 )
+
+const queryTextMaxLen = 200
+
+// normalizeAndHashQuery는 recsys-serving의 _query_hash와 동일 알고리즘.
+// (lower + strip 후 sha1 → hex 처음 12자.)
+func normalizeAndHashQuery(query string) string {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return ""
+	}
+	sum := sha1.Sum([]byte(normalized))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
 
 type Service struct {
 	repo *Repository
@@ -56,6 +78,12 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		memberIDPtr = &memberID
 	}
 
+	queryText := truncateRunes(strings.TrimSpace(req.QueryText), queryTextMaxLen)
+	queryNormHash := strings.TrimSpace(req.QueryNormHash)
+	if queryNormHash == "" && queryText != "" {
+		queryNormHash = normalizeAndHashQuery(queryText)
+	}
+
 	return s.repo.Create(input{
 		EventUUID:     eventUUID,
 		MemberID:      memberIDPtr,
@@ -72,6 +100,9 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		AppVersion:    strings.TrimSpace(req.AppVersion),
 		Metadata:      req.Metadata,
 		OccurredAt:    occurredAt.Format("2006-01-02 15:04:05"),
+		QueryID:       strings.TrimSpace(req.QueryID),
+		QueryText:     queryText,
+		QueryNormHash: queryNormHash,
 	}, shouldUpdateHistory(eventType))
 }
 
