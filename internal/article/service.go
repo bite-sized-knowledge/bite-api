@@ -14,9 +14,9 @@ import (
 const searchQueryMaxLen = 100
 
 type Service struct {
-	repo                 *Repository
-	recsysClient         *recsys.Client
-	recsysSearchEnabled  bool
+	repo                *Repository
+	recsysClient        *recsys.Client
+	recsysSearchEnabled bool
 }
 
 func NewService(repo *Repository, recsysClient *recsys.Client, recsysSearchEnabled bool) *Service {
