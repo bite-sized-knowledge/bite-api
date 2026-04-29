@@ -1,7 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/bite-sized/bite-api/internal/admin"
 	"github.com/bite-sized/bite-api/internal/article"
@@ -19,7 +26,13 @@ import (
 	"github.com/bite-sized/bite-api/pkg/email"
 	jwtpkg "github.com/bite-sized/bite-api/pkg/jwt"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
+)
+
+const (
+	readinessProbeTimeout = 2 * time.Second
+	shutdownTimeout       = 30 * time.Second
 )
 
 func main() {
@@ -29,7 +42,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
 
 	jwtService := jwtpkg.NewService(cfg.JWTSecretKey, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry)
 	emailClient := email.NewClient(cfg.ResendAPIKey, cfg.EmailFrom)
@@ -79,9 +91,14 @@ func main() {
 	e.Use(middleware.Recover())
 	e.Use(middleware.SecureHeaders())
 
+	// Liveness — 프로세스 살아있음만 확인. 재시작 트리거 용도.
 	e.GET("/actuator/health", func(c echo.Context) error {
-		return c.JSON(200, map[string]string{"status": "UP"})
+		return c.JSON(http.StatusOK, map[string]string{"status": "UP"})
 	})
+
+	// Readiness — 트래픽 받을 준비. DB는 hard dependency,
+	// recsys는 down이어도 MySQL FULLTEXT fallback이 있어 soft dependency로 보고만 함.
+	e.GET("/readyz", readyzHandler(db, cfg.RecsysBaseURL))
 
 	authMiddleware := middleware.JWTAuth(jwtService)
 	optionalAuth := middleware.OptionalJWTAuth(jwtService)
@@ -99,8 +116,62 @@ func main() {
 	adminGroup := e.Group("/admin")
 	admin.RegisterRoutes(adminGroup, adminHandler, authMiddleware, middleware.RequireRole("admin"))
 
-	log.Printf("Starting server on :%s", cfg.Port)
-	if err := e.Start(":" + cfg.Port); err != nil {
-		log.Fatalf("server error: %v", err)
+	go func() {
+		log.Printf("Starting server on :%s", cfg.Port)
+		if err := e.Start(":" + cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("received signal %s, shutting down (timeout %s)", sig, shutdownTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown error: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		log.Printf("db close error: %v", err)
+	}
+	log.Println("server stopped cleanly")
+}
+
+func readyzHandler(db *sqlx.DB, recsysBaseURL string) echo.HandlerFunc {
+	probeClient := &http.Client{Timeout: readinessProbeTimeout}
+	return func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), readinessProbeTimeout)
+		defer cancel()
+
+		checks := map[string]string{}
+		ready := true
+
+		if err := db.PingContext(ctx); err != nil {
+			checks["db"] = "down: " + err.Error()
+			ready = false
+		} else {
+			checks["db"] = "ok"
+		}
+
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, recsysBaseURL+"/health", nil)
+		resp, err := probeClient.Do(req)
+		switch {
+		case err != nil:
+			checks["recsys"] = "degraded: " + err.Error()
+		case resp.StatusCode >= 500:
+			resp.Body.Close()
+			checks["recsys"] = "degraded: status " + resp.Status
+		default:
+			resp.Body.Close()
+			checks["recsys"] = "ok"
+		}
+
+		status := http.StatusOK
+		if !ready {
+			status = http.StatusServiceUnavailable
+		}
+		return c.JSON(status, map[string]any{"ready": ready, "checks": checks})
 	}
 }
