@@ -71,7 +71,7 @@ func main() {
 	feedHandler := feed.NewHandler(feedService)
 
 	eventRepo := event.NewRepository(db)
-	eventService := event.NewService(eventRepo)
+	eventService := event.NewService(eventRepo, recsysClient)
 	eventHandler := event.NewHandler(eventService)
 
 	linkService := link.NewService(articleRepo)

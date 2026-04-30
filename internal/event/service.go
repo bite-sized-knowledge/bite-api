@@ -5,11 +5,33 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/bite-sized/bite-api/internal/model"
 )
+
+// recsysFeedbackPoster is the minimal surface event.Service needs from
+// recsys.Client. Defined here so tests can stub it without importing recsys.
+type recsysFeedbackPoster interface {
+	PostFeedback(memberID int64, articleID, eventType string) error
+}
+
+// recsysFeedbackEvents are the bite-api event types that map to bandit/user_vector
+// reward signals on recsys-serving. Any other event_type is dropped (no HTTP call).
+// Mapping → recsys: ARTICLE_IN→article_in, LIKE→like, ARCHIVE→archive,
+// SHARE→share, UNINTEREST→uninterest. ARTICLE_CLICK 은 RN/web 둘 다 클릭이라
+// article_in 으로 normalize.
+var recsysFeedbackEventMap = map[string]string{
+	"ARTICLE_IN":    "article_in",
+	"ARTICLE_CLICK": "article_in",
+	"ARTICLE_OPEN":  "article_in",
+	"LIKE":          "like",
+	"ARCHIVE":       "archive",
+	"SHARE":         "share",
+	"UNINTEREST":    "uninterest",
+}
 
 const queryTextMaxLen = 200
 
@@ -33,11 +55,12 @@ func truncateRunes(s string, n int) string {
 }
 
 type Service struct {
-	repo *Repository
+	repo   *Repository
+	recsys recsysFeedbackPoster
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, recsys recsysFeedbackPoster) *Service {
+	return &Service{repo: repo, recsys: recsys}
 }
 
 func (s *Service) Create(memberID int64, req CreateEventRequest) error {
@@ -84,7 +107,7 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		queryNormHash = normalizeAndHashQuery(queryText)
 	}
 
-	return s.repo.Create(input{
+	if err := s.repo.Create(input{
 		EventUUID:     eventUUID,
 		MemberID:      memberIDPtr,
 		DeviceID:      strings.TrimSpace(req.DeviceID),
@@ -103,7 +126,35 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		QueryID:       strings.TrimSpace(req.QueryID),
 		QueryText:     queryText,
 		QueryNormHash: queryNormHash,
-	}, shouldUpdateHistory(eventType))
+	}, shouldUpdateHistory(eventType)); err != nil {
+		return err
+	}
+
+	// fire-and-forget recsys feedback (Phase 2 실시간 reward 경로). 실패해도 user_events 는 이미 적재됨.
+	s.fireRecsysFeedback(memberIDPtr, articleIDPtr, eventType)
+	return nil
+}
+
+func (s *Service) fireRecsysFeedback(memberID *int64, articleID *string, eventType string) {
+	if s.recsys == nil || memberID == nil || articleID == nil {
+		return
+	}
+	mapped, ok := recsysFeedbackEventMap[strings.ToUpper(strings.TrimSpace(eventType))]
+	if !ok {
+		return
+	}
+	mid := *memberID
+	aid := *articleID
+	go func() {
+		if err := s.recsys.PostFeedback(mid, aid, mapped); err != nil {
+			slog.Warn("recsys feedback post failed",
+				slog.Int64("member_id", mid),
+				slog.String("article_id", aid),
+				slog.String("event_type", mapped),
+				slog.Any("error", err),
+			)
+		}
+	}()
 }
 
 func (s *Service) MergeAnonymousEvents(memberID int64, deviceID string) (int64, error) {
