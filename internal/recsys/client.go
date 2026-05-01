@@ -79,6 +79,40 @@ func (c *Client) fetchFeed(endpoint string) (FeedResult, error) {
 	return FeedResult{Articles: payload.Articles, FeedRequestID: payload.FeedRequestID}, nil
 }
 
+// MigrateDevice asks recsys to copy device_category_bandit rows into member_category_bandit
+// after lazy guest mint. Idempotent — safe to call multiple times but middleware should only
+// fire on first creation (created=true).
+func (c *Client) MigrateDevice(memberID int64, deviceID string) error {
+	if memberID <= 0 || deviceID == "" {
+		return fmt.Errorf("invalid migrate args")
+	}
+	body, err := json.Marshal(struct {
+		MemberID int64  `json:"member_id"`
+		DeviceID string `json:"device_id"`
+	}{memberID, deviceID})
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf("%s/feeds/migrate-device", c.baseURL)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("recsys migrate-device failed with status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // PostFeedback fires a single bandit/user-vector update. Pass memberID > 0 for
 // authenticated callers; for anonymous callers, pass 0 and provide deviceID.
 // recsys requires at least one of the two identifiers (member_id or device_id).

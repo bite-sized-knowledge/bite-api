@@ -102,7 +102,7 @@ func main() {
 
 	authMiddleware := middleware.JWTAuth(jwtService)
 	optionalAuth := middleware.OptionalJWTAuth(jwtService)
-	lazyGuest := middleware.LazyGuest(memberService.IssueGuestForDevice, cfg.JWTRefreshExpiry)
+	lazyGuest := middleware.LazyGuest(memberService.IssueGuestForDevice, recsysClient, cfg.JWTRefreshExpiry)
 
 	v1 := e.Group("/v1")
 	auth.RegisterRoutes(v1, authHandler, oauthHandler, authMiddleware)
