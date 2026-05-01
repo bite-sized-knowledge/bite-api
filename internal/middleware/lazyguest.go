@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	HeaderDeviceID   = "X-Device-Id"
-	HeaderGuestToken = "X-Guest-Token"
+	HeaderDeviceID      = "X-Device-Id"
+	HeaderGuestToken    = "X-Guest-Token"
+	HeaderInterestIDs   = "X-Interest-Ids"    // bite-web localStorage interestIds CSV → recsys device prior 강화
+	HeaderFeedRequestID = "X-Feed-Request-Id" // recsys 응답 → bite-web sessionStorage echo (impression↔click 그룹핑)
 )
 
 type GuestIssuer func(deviceID string) (memberID int64, accessToken, refreshToken string, created bool, err error)
