@@ -14,8 +14,9 @@ import (
 
 // recsysFeedbackPoster is the minimal surface event.Service needs from
 // recsys.Client. Defined here so tests can stub it without importing recsys.
+// memberID > 0 = 회원, deviceID = 비회원 (둘 중 하나는 보장).
 type recsysFeedbackPoster interface {
-	PostFeedback(memberID int64, articleID, eventType string) error
+	PostFeedback(memberID int64, deviceID, articleID, eventType string) error
 }
 
 // recsysFeedbackEvents are the bite-api event types that map to bandit/user_vector
@@ -130,25 +131,35 @@ func (s *Service) Create(memberID int64, req CreateEventRequest) error {
 		return err
 	}
 
-	// fire-and-forget recsys feedback (Phase 2 실시간 reward 경로). 실패해도 user_events 는 이미 적재됨.
-	s.fireRecsysFeedback(memberIDPtr, articleIDPtr, eventType)
+	// fire-and-forget recsys feedback (실시간 reward). 회원/비회원 둘 다 — 비회원은 device_id.
+	s.fireRecsysFeedback(memberIDPtr, strings.TrimSpace(req.DeviceID), articleIDPtr, eventType)
 	return nil
 }
 
-func (s *Service) fireRecsysFeedback(memberID *int64, articleID *string, eventType string) {
-	if s.recsys == nil || memberID == nil || articleID == nil {
+func (s *Service) fireRecsysFeedback(memberID *int64, deviceID string, articleID *string, eventType string) {
+	if s.recsys == nil || articleID == nil {
+		return
+	}
+	// 회원/비회원 모두 article_id 필수. 식별자는 member_id 또는 device_id 중 하나는 있어야.
+	hasMember := memberID != nil && *memberID > 0
+	if !hasMember && deviceID == "" {
 		return
 	}
 	mapped, ok := recsysFeedbackEventMap[strings.ToUpper(strings.TrimSpace(eventType))]
 	if !ok {
 		return
 	}
-	mid := *memberID
+	var mid int64
+	if hasMember {
+		mid = *memberID
+	}
 	aid := *articleID
+	did := deviceID
 	go func() {
-		if err := s.recsys.PostFeedback(mid, aid, mapped); err != nil {
+		if err := s.recsys.PostFeedback(mid, did, aid, mapped); err != nil {
 			slog.Warn("recsys feedback post failed",
 				slog.Int64("member_id", mid),
+				slog.String("device_id", did),
 				slog.String("article_id", aid),
 				slog.String("event_type", mapped),
 				slog.Any("error", err),
