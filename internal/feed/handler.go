@@ -19,10 +19,6 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 	g.GET("", h.feed, optionalAuth)
 }
 
-// HeaderFeedRequestID — bite-web 가 응답 헤더에서 받아 sessionStorage 에 저장 →
-// 다음 user_events 호출 시 feed_request_id 첨부 → impression ↔ click 정확 그룹핑.
-const HeaderFeedRequestID = "X-Feed-Request-Id"
-
 func (h *Handler) feed(c echo.Context) error {
 	memberID, _ := middleware.CurrentMemberID(c)
 	deviceID := c.Request().Header.Get(middleware.HeaderDeviceID)
@@ -31,7 +27,7 @@ func (h *Handler) feed(c echo.Context) error {
 		return response.Error(c, err)
 	}
 	if res.FeedRequestID != "" {
-		c.Response().Header().Set(HeaderFeedRequestID, res.FeedRequestID)
+		c.Response().Header().Set(middleware.HeaderFeedRequestID, res.FeedRequestID)
 	}
 	return response.Success(c, res.Items)
 }
