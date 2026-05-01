@@ -1,6 +1,7 @@
 package recsys
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,6 +31,40 @@ func NewClient(baseURL, apiKey string) *Client {
 func (c *Client) GetFeed(memberID int64) ([]string, error) {
 	endpoint := fmt.Sprintf("%s/feeds?member_id=%d", c.baseURL, memberID)
 	return c.fetchArticleIDs(endpoint)
+}
+
+// PostFeedback fires a single bandit/user-vector update.
+// Used as fire-and-forget from event.Service.Create — failures are logged by the caller.
+func (c *Client) PostFeedback(memberID int64, articleID, eventType string) error {
+	if memberID <= 0 || articleID == "" || eventType == "" {
+		return fmt.Errorf("invalid feedback args")
+	}
+	body, err := json.Marshal(struct {
+		MemberID  int64  `json:"member_id"`
+		ArticleID string `json:"article_id"`
+		EventType string `json:"event_type"`
+	}{memberID, articleID, eventType})
+	if err != nil {
+		return err
+	}
+	endpoint := fmt.Sprintf("%s/feeds/feedback", c.baseURL)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("recsys feedback failed with status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 type SearchRequest struct {
