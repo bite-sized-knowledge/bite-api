@@ -23,18 +23,20 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 
 	if optionalAuth != nil {
 		g.GET("", h.list, optionalAuth)
+		g.GET("/:blogId", h.get, optionalAuth)
+		g.GET("/:blogId/articles", h.articles, optionalAuth)
 	} else {
 		g.GET("", h.list)
+		g.GET("/:blogId", h.get)
+		g.GET("/:blogId/articles", h.articles)
 	}
 
 	protected := g.Group("")
 	if authMiddleware != nil {
 		protected.Use(authMiddleware)
 	}
-	protected.GET("/:blogId", h.get)
 	protected.POST("/:blogId/subscribe", h.subscribe)
 	protected.DELETE("/:blogId/subscribe", h.unsubscribe)
-	protected.GET("/:blogId/articles", h.articles)
 }
 
 func (h *Handler) list(c echo.Context) error {
@@ -50,11 +52,7 @@ func (h *Handler) get(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
-	}
-	result, err := h.service.Get(blogID, &memberID)
+	result, err := h.service.Get(blogID, optionalMemberID(c))
 	if err != nil {
 		return response.Error(c, err)
 	}
@@ -96,9 +94,9 @@ func (h *Handler) articles(c echo.Context) error {
 	if err != nil {
 		return response.Error(c, err)
 	}
-	memberID, err := middleware.CurrentMemberID(c)
-	if err != nil {
-		return response.Error(c, err)
+	var memberID int64
+	if mid := optionalMemberID(c); mid != nil {
+		memberID = *mid
 	}
 	result, err := h.service.Articles(memberID, blogID, queryInt(c, "limit"), c.QueryParam("from"))
 	if err != nil {

@@ -1,12 +1,15 @@
 package auth
 
 import (
+	"errors"
 	"html"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/bite-sized/bite-api/internal/authcookie"
 	"github.com/bite-sized/bite-api/internal/middleware"
+	"github.com/bite-sized/bite-api/internal/model"
 	"github.com/bite-sized/bite-api/pkg/response"
 	"github.com/labstack/echo/v4"
 )
@@ -106,8 +109,11 @@ func (h *Handler) passwordReset(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, err)
 	}
-	// Always return success to prevent account enumeration
-	_ = h.service.SendPasswordResetEmail(req.Email)
+	// Always return success to prevent account enumeration. We still log
+	// non-expected failures so silent Resend / DB errors are diagnosable.
+	if err := h.service.SendPasswordResetEmail(req.Email); err != nil && !errors.Is(err, model.ErrBadRequest) {
+		log.Printf("password_reset send failed: %v", err)
+	}
 	return response.Success(c, map[string]string{"message": "If account exists, reset email was sent"})
 }
 
