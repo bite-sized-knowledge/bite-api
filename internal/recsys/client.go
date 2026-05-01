@@ -28,10 +28,17 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
+// FeedResult bundles the recsys /feeds response. FeedRequestID 는 옵션이며
+// bite-web 가 user_events.feed_request_id 로 echo 하면 impression ↔ click 정확 그룹핑.
+type FeedResult struct {
+	Articles      []string
+	FeedRequestID string
+}
+
 // GetFeed asks recsys for a personalized feed. Pass memberID > 0 for
 // authenticated callers; for anonymous callers, pass 0 and provide deviceID.
 // recsys requires at least one of the two identifiers.
-func (c *Client) GetFeed(memberID int64, deviceID string) ([]string, error) {
+func (c *Client) GetFeed(memberID int64, deviceID string) (FeedResult, error) {
 	q := url.Values{}
 	if memberID > 0 {
 		q.Set("member_id", strconv.FormatInt(memberID, 10))
@@ -40,23 +47,59 @@ func (c *Client) GetFeed(memberID int64, deviceID string) ([]string, error) {
 		q.Set("device_id", deviceID)
 	}
 	if len(q) == 0 {
-		return nil, fmt.Errorf("recsys feed: member_id or device_id required")
+		return FeedResult{}, fmt.Errorf("recsys feed: member_id or device_id required")
 	}
 	endpoint := fmt.Sprintf("%s/feeds?%s", c.baseURL, q.Encode())
-	return c.fetchArticleIDs(endpoint)
+	return c.fetchFeed(endpoint)
 }
 
-// PostFeedback fires a single bandit/user-vector update.
+func (c *Client) fetchFeed(endpoint string) (FeedResult, error) {
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return FeedResult{}, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return FeedResult{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return FeedResult{}, fmt.Errorf("recsys feed failed with status %d", resp.StatusCode)
+	}
+	var payload struct {
+		Articles      []string `json:"articles"`
+		FeedRequestID string   `json:"feed_request_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return FeedResult{}, err
+	}
+	return FeedResult{Articles: payload.Articles, FeedRequestID: payload.FeedRequestID}, nil
+}
+
+// PostFeedback fires a single bandit/user-vector update. Pass memberID > 0 for
+// authenticated callers; for anonymous callers, pass 0 and provide deviceID.
+// recsys requires at least one of the two identifiers (member_id or device_id).
 // Used as fire-and-forget from event.Service.Create — failures are logged by the caller.
-func (c *Client) PostFeedback(memberID int64, articleID, eventType string) error {
-	if memberID <= 0 || articleID == "" || eventType == "" {
+func (c *Client) PostFeedback(memberID int64, deviceID, articleID, eventType string) error {
+	if (memberID <= 0 && deviceID == "") || articleID == "" || eventType == "" {
 		return fmt.Errorf("invalid feedback args")
 	}
-	body, err := json.Marshal(struct {
-		MemberID  int64  `json:"member_id"`
+	type payload struct {
+		MemberID  *int64 `json:"member_id,omitempty"`
+		DeviceID  string `json:"device_id,omitempty"`
 		ArticleID string `json:"article_id"`
 		EventType string `json:"event_type"`
-	}{memberID, articleID, eventType})
+	}
+	p := payload{ArticleID: articleID, EventType: eventType}
+	if memberID > 0 {
+		p.MemberID = &memberID
+	} else if deviceID != "" {
+		p.DeviceID = deviceID
+	}
+	body, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}

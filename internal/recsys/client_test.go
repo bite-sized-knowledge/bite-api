@@ -23,12 +23,12 @@ func TestGetFeedUsesFeedsEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "")
-	articleIDs, err := client.GetFeed(42, "")
+	res, err := client.GetFeed(42, "")
 	if err != nil {
 		t.Fatalf("GetFeed error: %v", err)
 	}
-	if len(articleIDs) != 2 || articleIDs[0] != "a1" || articleIDs[1] != "a2" {
-		t.Fatalf("unexpected article ids: %#v", articleIDs)
+	if len(res.Articles) != 2 || res.Articles[0] != "a1" || res.Articles[1] != "a2" {
+		t.Fatalf("unexpected article ids: %#v", res.Articles)
 	}
 }
 
