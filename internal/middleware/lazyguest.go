@@ -22,6 +22,13 @@ type RecsysMigrator interface {
 	MigrateDevice(memberID int64, deviceID string) error
 }
 
+// 동시 in-flight migrate 한도. 트래픽 폭증 시 outbound socket 폭증 막는 안전망 —
+// 5초 timeout 의 recsys.Client.MigrateDevice 가 한도 도달하면 `select default` 로 즉시 drop.
+// 정상 운영에선 lazy guest 발급 자체가 드물고 (FK action 첫 1회) recsys 응답 ms 라 거의 안 닿음.
+const migrateMaxInflight = 64
+
+var migrateSem = make(chan struct{}, migrateMaxInflight)
+
 // LazyGuest sits after OptionalJWTAuth on FK-requiring endpoints. If the
 // caller is already authenticated it passes through; otherwise it requires
 // X-Device-Id, lazily mints a guest member, and exposes the access token via
@@ -57,15 +64,25 @@ func LazyGuest(issue GuestIssuer, migrator RecsysMigrator, refreshExpiry time.Du
 			c.Set(ContextKeyMemberID, memberID)
 
 			if created && migrator != nil {
-				go func(mid int64, did string) {
-					if mErr := migrator.MigrateDevice(mid, did); mErr != nil {
-						slog.Warn("recsys migrate-device failed",
-							slog.Int64("member_id", mid),
-							slog.String("device_id", did),
-							slog.Any("error", mErr),
-						)
-					}
-				}(memberID, deviceID)
+				select {
+				case migrateSem <- struct{}{}:
+					go func(mid int64, did string) {
+						defer func() { <-migrateSem }()
+						if mErr := migrator.MigrateDevice(mid, did); mErr != nil {
+							slog.Warn("recsys migrate-device failed",
+								slog.Int64("member_id", mid),
+								slog.String("device_id", did),
+								slog.Any("error", mErr),
+							)
+						}
+					}(memberID, deviceID)
+				default:
+					slog.Warn("recsys migrate-device dropped (semaphore full)",
+						slog.Int64("member_id", memberID),
+						slog.String("device_id", deviceID),
+						slog.Int("inflight_cap", migrateMaxInflight),
+					)
+				}
 			}
 			return next(c)
 		}
