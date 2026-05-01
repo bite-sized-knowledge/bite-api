@@ -28,47 +28,52 @@ func NewService(repo *Repository, jwtService *jwtpkg.Service) *Service {
 // device_id and returns a fresh JWT pair. Idempotent via UNIQUE(device_id);
 // concurrent first-time inserts are reconciled by re-reading after a UNIQUE
 // conflict.
-func (s *Service) IssueGuestForDevice(deviceID string) (int64, string, string, error) {
+//
+// `created` 는 이 호출에서 새로 INSERT 된 경우만 true — middleware 가 이때만
+// recsys 의 device→member bandit migration 을 fire-and-forget 으로 호출한다
+// (재호출은 멱등이지만 매 FK action 마다 RPC 는 낭비).
+func (s *Service) IssueGuestForDevice(deviceID string) (memberID int64, accessToken, refreshToken string, created bool, err error) {
 	deviceID = strings.ToLower(strings.TrimSpace(deviceID))
 	if !uuidRe.MatchString(deviceID) {
-		return 0, "", "", fmt.Errorf("%w: invalid device_id", model.ErrBadRequest)
+		return 0, "", "", false, fmt.Errorf("%w: invalid device_id", model.ErrBadRequest)
 	}
 
 	memberRecord, err := s.repo.FindByDeviceID(deviceID)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", false, err
 	}
 	if memberRecord == nil {
-		name, err := s.getAvailableName()
-		if err != nil {
-			return 0, "", "", err
+		name, nerr := s.getAvailableName()
+		if nerr != nil {
+			return 0, "", "", false, nerr
 		}
-		memberID, insertErr := s.repo.CreateGuestWithDeviceID(name, deviceID)
+		newID, insertErr := s.repo.CreateGuestWithDeviceID(name, deviceID)
 		if insertErr != nil {
 			existing, refetchErr := s.repo.FindByDeviceID(deviceID)
 			if refetchErr != nil || existing == nil {
-				return 0, "", "", insertErr
+				return 0, "", "", false, insertErr
 			}
 			memberRecord = existing
 		} else {
 			memberRecord = &model.Member{
-				MemberID: memberID,
+				MemberID: newID,
 				Name:     name,
 				Status:   "ACTIVE",
 				Role:     "ROLE_GUEST",
 			}
+			created = true
 		}
 	}
 
-	accessToken, err := s.jwtService.GenerateAccessToken(memberRecord)
+	accessToken, err = s.jwtService.GenerateAccessToken(memberRecord)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", false, err
 	}
-	refreshToken, err := s.jwtService.GenerateRefreshToken(memberRecord)
+	refreshToken, err = s.jwtService.GenerateRefreshToken(memberRecord)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", false, err
 	}
-	return memberRecord.MemberID, accessToken, refreshToken, nil
+	return memberRecord.MemberID, accessToken, refreshToken, created, nil
 }
 
 func (s *Service) CreateGuestMember(req CreateGuestRequest) (*RegisterResponse, error) {
