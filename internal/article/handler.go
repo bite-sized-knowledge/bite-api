@@ -17,7 +17,7 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc, lazyGuest echo.MiddlewareFunc) {
 	g := v1.Group("/articles")
 
 	// Anonymous + IP-based rate limit: search hits a FULLTEXT-indexed scan,
@@ -29,17 +29,19 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 	g.GET("/search", h.search, searchRL)
 	g.GET("/suggest", h.suggest)
 
-	// Protected endpoints
+	// FK-action endpoints: lazyGuest mints a guest member on first interaction
+	// from an anonymous client (X-Device-Id required).
+	g.POST("/:articleId/likes", h.like, optionalAuth, lazyGuest)
+	g.DELETE("/:articleId/likes", h.unlike, optionalAuth, lazyGuest)
+	g.POST("/:articleId/uninterests", h.uninterest, optionalAuth, lazyGuest)
+	g.POST("/:articleId/bookmarks", h.bookmark, optionalAuth, lazyGuest)
+	g.DELETE("/:articleId/bookmarks", h.unbookmark, optionalAuth, lazyGuest)
+	g.POST("/:articleId/shares", h.share, optionalAuth, lazyGuest)
+
 	protected := g.Group("")
 	protected.Use(authMiddleware)
-	protected.POST("/:articleId/likes", h.like)
-	protected.DELETE("/:articleId/likes", h.unlike)
-	protected.POST("/:articleId/uninterests", h.uninterest)
 	protected.GET("/likes", h.likes)
 	protected.GET("/bookmarks", h.bookmarks)
-	protected.POST("/:articleId/bookmarks", h.bookmark)
-	protected.DELETE("/:articleId/bookmarks", h.unbookmark)
-	protected.POST("/:articleId/shares", h.share)
 	protected.GET("/history", h.history)
 	protected.POST("/by-ids", h.byIDs)
 }

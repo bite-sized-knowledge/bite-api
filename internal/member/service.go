@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 type Service struct {
 	repo       *Repository
 	jwtService *jwtpkg.Service
@@ -19,6 +22,53 @@ type Service struct {
 
 func NewService(repo *Repository, jwtService *jwtpkg.Service) *Service {
 	return &Service{repo: repo, jwtService: jwtService}
+}
+
+// IssueGuestForDevice resolves (or lazily creates) the guest member bound to
+// device_id and returns a fresh JWT pair. Idempotent via UNIQUE(device_id);
+// concurrent first-time inserts are reconciled by re-reading after a UNIQUE
+// conflict.
+func (s *Service) IssueGuestForDevice(deviceID string) (int64, string, string, error) {
+	deviceID = strings.ToLower(strings.TrimSpace(deviceID))
+	if !uuidRe.MatchString(deviceID) {
+		return 0, "", "", fmt.Errorf("%w: invalid device_id", model.ErrBadRequest)
+	}
+
+	memberRecord, err := s.repo.FindByDeviceID(deviceID)
+	if err != nil {
+		return 0, "", "", err
+	}
+	if memberRecord == nil {
+		name, err := s.getAvailableName()
+		if err != nil {
+			return 0, "", "", err
+		}
+		memberID, insertErr := s.repo.CreateGuestWithDeviceID(name, deviceID)
+		if insertErr != nil {
+			existing, refetchErr := s.repo.FindByDeviceID(deviceID)
+			if refetchErr != nil || existing == nil {
+				return 0, "", "", insertErr
+			}
+			memberRecord = existing
+		} else {
+			memberRecord = &model.Member{
+				MemberID: memberID,
+				Name:     name,
+				Status:   "ACTIVE",
+				Role:     "ROLE_GUEST",
+			}
+		}
+	}
+
+	accessToken, err := s.jwtService.GenerateAccessToken(memberRecord)
+	if err != nil {
+		return 0, "", "", err
+	}
+	refreshToken, err := s.jwtService.GenerateRefreshToken(memberRecord)
+	if err != nil {
+		return 0, "", "", err
+	}
+	return memberRecord.MemberID, accessToken, refreshToken, nil
 }
 
 func (s *Service) CreateGuestMember(req CreateGuestRequest) (*RegisterResponse, error) {

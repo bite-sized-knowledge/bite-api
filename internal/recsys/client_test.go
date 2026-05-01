@@ -15,17 +15,46 @@ func TestGetFeedUsesFeedsEndpoint(t *testing.T) {
 		if r.URL.Query().Get("member_id") != "42" {
 			t.Fatalf("unexpected member_id: %s", r.URL.Query().Get("member_id"))
 		}
+		if r.URL.Query().Get("device_id") != "" {
+			t.Fatalf("unexpected device_id present: %s", r.URL.Query().Get("device_id"))
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"articles": []string{"a1", "a2"}})
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL, "")
-	articleIDs, err := client.GetFeed(42)
+	articleIDs, err := client.GetFeed(42, "")
 	if err != nil {
 		t.Fatalf("GetFeed error: %v", err)
 	}
 	if len(articleIDs) != 2 || articleIDs[0] != "a1" || articleIDs[1] != "a2" {
 		t.Fatalf("unexpected article ids: %#v", articleIDs)
+	}
+}
+
+func TestGetFeedAnonymousUsesDeviceID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("device_id") != "abc-123" {
+			t.Fatalf("unexpected device_id: %q", q.Get("device_id"))
+		}
+		if q.Get("member_id") != "" {
+			t.Fatalf("unexpected member_id for anonymous: %q", q.Get("member_id"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"articles": []string{}})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	if _, err := client.GetFeed(0, "abc-123"); err != nil {
+		t.Fatalf("GetFeed error: %v", err)
+	}
+}
+
+func TestGetFeedRequiresIdentifier(t *testing.T) {
+	client := NewClient("http://unused", "")
+	if _, err := client.GetFeed(0, ""); err == nil {
+		t.Fatal("expected error when both identifiers are empty")
 	}
 }
 

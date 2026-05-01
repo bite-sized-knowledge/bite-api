@@ -18,7 +18,7 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc, lazyGuest echo.MiddlewareFunc) {
 	g := v1.Group("/blogs")
 
 	if optionalAuth != nil {
@@ -31,12 +31,8 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 		g.GET("/:blogId/articles", h.articles)
 	}
 
-	protected := g.Group("")
-	if authMiddleware != nil {
-		protected.Use(authMiddleware)
-	}
-	protected.POST("/:blogId/subscribe", h.subscribe)
-	protected.DELETE("/:blogId/subscribe", h.unsubscribe)
+	g.POST("/:blogId/subscribe", h.subscribe, optionalAuth, lazyGuest)
+	g.DELETE("/:blogId/subscribe", h.unsubscribe, optionalAuth, lazyGuest)
 }
 
 func (h *Handler) list(c echo.Context) error {

@@ -102,12 +102,13 @@ func main() {
 
 	authMiddleware := middleware.JWTAuth(jwtService)
 	optionalAuth := middleware.OptionalJWTAuth(jwtService)
+	lazyGuest := middleware.LazyGuest(memberService.IssueGuestForDevice, cfg.JWTRefreshExpiry)
 
 	v1 := e.Group("/v1")
 	auth.RegisterRoutes(v1, authHandler, oauthHandler, authMiddleware)
-	member.RegisterRoutes(v1, memberHandler, authMiddleware)
-	article.RegisterRoutes(v1, articleHandler, authMiddleware, optionalAuth)
-	blog.RegisterRoutes(v1, blogHandler, authMiddleware, optionalAuth)
+	member.RegisterRoutes(v1, memberHandler, authMiddleware, optionalAuth, lazyGuest)
+	article.RegisterRoutes(v1, articleHandler, authMiddleware, optionalAuth, lazyGuest)
+	blog.RegisterRoutes(v1, blogHandler, authMiddleware, optionalAuth, lazyGuest)
 	feed.RegisterRoutes(v1, feedHandler, authMiddleware, optionalAuth)
 	event.RegisterRoutes(v1, eventHandler, authMiddleware, optionalAuth)
 	link.RegisterRoutes(v1, linkHandler)

@@ -10,7 +10,7 @@ func TestRegisterRoutes(t *testing.T) {
 	e := echo.New()
 	v1 := e.Group("/v1")
 	passthrough := func(next echo.HandlerFunc) echo.HandlerFunc { return next }
-	RegisterRoutes(v1, &Handler{}, passthrough, passthrough)
+	RegisterRoutes(v1, &Handler{}, passthrough, passthrough, passthrough)
 
 	routes := map[string]bool{}
 	for _, route := range e.Routes() {

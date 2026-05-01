@@ -21,7 +21,8 @@ func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFu
 
 func (h *Handler) feed(c echo.Context) error {
 	memberID, _ := middleware.CurrentMemberID(c)
-	items, err := h.service.Feed(memberID)
+	deviceID := c.Request().Header.Get(middleware.HeaderDeviceID)
+	items, err := h.service.Feed(memberID, deviceID)
 	if err != nil {
 		return response.Error(c, err)
 	}

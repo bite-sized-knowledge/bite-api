@@ -28,8 +28,21 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
-func (c *Client) GetFeed(memberID int64) ([]string, error) {
-	endpoint := fmt.Sprintf("%s/feeds?member_id=%d", c.baseURL, memberID)
+// GetFeed asks recsys for a personalized feed. Pass memberID > 0 for
+// authenticated callers; for anonymous callers, pass 0 and provide deviceID.
+// recsys requires at least one of the two identifiers.
+func (c *Client) GetFeed(memberID int64, deviceID string) ([]string, error) {
+	q := url.Values{}
+	if memberID > 0 {
+		q.Set("member_id", strconv.FormatInt(memberID, 10))
+	}
+	if deviceID != "" {
+		q.Set("device_id", deviceID)
+	}
+	if len(q) == 0 {
+		return nil, fmt.Errorf("recsys feed: member_id or device_id required")
+	}
+	endpoint := fmt.Sprintf("%s/feeds?%s", c.baseURL, q.Encode())
 	return c.fetchArticleIDs(endpoint)
 }
 

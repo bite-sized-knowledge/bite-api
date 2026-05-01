@@ -24,7 +24,8 @@ func CORS() echo.MiddlewareFunc {
 	return echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{echo.GET, echo.POST, echo.PUT, echo.PATCH, echo.DELETE, echo.OPTIONS},
-		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, HeaderDeviceID},
+		ExposeHeaders:    []string{HeaderGuestToken},
 		AllowCredentials: true,
 		MaxAge:           3600,
 	})

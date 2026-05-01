@@ -21,20 +21,19 @@ func NewHandler(service *Service, refreshExpiry time.Duration) *Handler {
 	return &Handler{service: service, refreshExpiry: refreshExpiry}
 }
 
-func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware ...echo.MiddlewareFunc) {
+func RegisterRoutes(v1 *echo.Group, h *Handler, authMiddleware echo.MiddlewareFunc, optionalAuth echo.MiddlewareFunc, lazyGuest echo.MiddlewareFunc) {
 	g := v1.Group("/members")
 
 	regRL := middleware.RateLimit(3, 5)
 	g.POST("", h.createGuest, regRL)
 	g.POST("/join", h.join, regRL)
 
+	g.PUT("/interests", h.updateInterests, optionalAuth, lazyGuest)
+
 	protected := g.Group("")
-	if len(authMiddleware) > 0 {
-		protected.Use(authMiddleware...)
-	}
+	protected.Use(authMiddleware)
 	protected.GET("/me", h.getProfile)
 	protected.GET("/name/check", h.checkName)
-	protected.PUT("/interests", h.updateInterests)
 	protected.GET("/interests", h.getInterests)
 	protected.DELETE("/:memberId", h.deleteMember)
 	protected.PUT("/profile", h.updateProfile)

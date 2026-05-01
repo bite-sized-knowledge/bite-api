@@ -20,8 +20,33 @@ func (r *Repository) DB() *sqlx.DB {
 	return r.db
 }
 
+const memberSelectFields = `member_id, COALESCE(email, '') AS email, COALESCE(password, '') AS password, COALESCE(name, '') AS name, birth, COALESCE(gender, '') AS gender, COALESCE(status, '') AS status, COALESCE(role, '') AS role, created_at, updated_at`
+
 func (r *Repository) CreateGuest(name string) (int64, error) {
 	result, err := r.db.Exec(`INSERT INTO member (name, status, role) VALUES (?, 'ACTIVE', 'ROLE_GUEST')`, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (r *Repository) FindByDeviceID(deviceID string) (*model.Member, error) {
+	var m model.Member
+	err := r.db.Get(&m, `SELECT `+memberSelectFields+` FROM member WHERE device_id = ? AND status = 'ACTIVE'`, deviceID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &m, nil
+}
+
+// CreateGuestWithDeviceID — on UNIQUE(device_id) conflict from a concurrent
+// first request, callers must re-read via FindByDeviceID to recover the row
+// the racing request just inserted.
+func (r *Repository) CreateGuestWithDeviceID(name, deviceID string) (int64, error) {
+	result, err := r.db.Exec(`INSERT INTO member (name, status, role, device_id) VALUES (?, 'ACTIVE', 'ROLE_GUEST', ?)`, name, deviceID)
 	if err != nil {
 		return 0, err
 	}
@@ -56,7 +81,7 @@ func (r *Repository) AddMemberInterest(memberID, interestID int64) error {
 
 func (r *Repository) FindMemberByID(memberID int64) (*model.Member, error) {
 	var memberRecord model.Member
-	err := r.db.Get(&memberRecord, `SELECT member_id, COALESCE(email, '') AS email, COALESCE(password, '') AS password, COALESCE(name, '') AS name, birth, COALESCE(gender, '') AS gender, COALESCE(status, '') AS status, COALESCE(role, '') AS role, created_at, updated_at FROM member WHERE member_id = ?`, memberID)
+	err := r.db.Get(&memberRecord, `SELECT `+memberSelectFields+` FROM member WHERE member_id = ?`, memberID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
