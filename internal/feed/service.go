@@ -24,9 +24,9 @@ type FeedResult struct {
 	FeedRequestID string
 }
 
-func (s *Service) Feed(memberID int64, deviceID string) (FeedResult, error) {
+func (s *Service) Feed(memberID int64, deviceID, interestIDs string) (FeedResult, error) {
 	if memberID > 0 || deviceID != "" {
-		res, err := s.recsysClient.GetFeed(memberID, deviceID)
+		res, err := s.recsysClient.GetFeed(memberID, deviceID, interestIDs)
 		if err == nil && len(res.Articles) > 0 {
 			items, itemErr := s.articleRepo.GetByIDs(memberID, res.Articles)
 			if itemErr == nil && len(items) > 0 {

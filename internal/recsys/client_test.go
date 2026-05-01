@@ -23,7 +23,7 @@ func TestGetFeedUsesFeedsEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "")
-	res, err := client.GetFeed(42, "")
+	res, err := client.GetFeed(42, "", "")
 	if err != nil {
 		t.Fatalf("GetFeed error: %v", err)
 	}
@@ -46,14 +46,14 @@ func TestGetFeedAnonymousUsesDeviceID(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "")
-	if _, err := client.GetFeed(0, "abc-123"); err != nil {
+	if _, err := client.GetFeed(0, "abc-123", ""); err != nil {
 		t.Fatalf("GetFeed error: %v", err)
 	}
 }
 
 func TestGetFeedRequiresIdentifier(t *testing.T) {
 	client := NewClient("http://unused", "")
-	if _, err := client.GetFeed(0, ""); err == nil {
+	if _, err := client.GetFeed(0, "", ""); err == nil {
 		t.Fatal("expected error when both identifiers are empty")
 	}
 }

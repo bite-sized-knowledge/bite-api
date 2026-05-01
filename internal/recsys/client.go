@@ -37,8 +37,10 @@ type FeedResult struct {
 
 // GetFeed asks recsys for a personalized feed. Pass memberID > 0 for
 // authenticated callers; for anonymous callers, pass 0 and provide deviceID.
-// recsys requires at least one of the two identifiers.
-func (c *Client) GetFeed(memberID int64, deviceID string) (FeedResult, error) {
+// recsys requires at least one of the two identifiers. interestIDs (CSV) 는
+// 비회원 device 의 lazy-init prior 강화에만 사용 — 회원은 server-side member_interest
+// 가 ground truth 라 무시됨.
+func (c *Client) GetFeed(memberID int64, deviceID, interestIDs string) (FeedResult, error) {
 	q := url.Values{}
 	if memberID > 0 {
 		q.Set("member_id", strconv.FormatInt(memberID, 10))
@@ -50,16 +52,19 @@ func (c *Client) GetFeed(memberID int64, deviceID string) (FeedResult, error) {
 		return FeedResult{}, fmt.Errorf("recsys feed: member_id or device_id required")
 	}
 	endpoint := fmt.Sprintf("%s/feeds?%s", c.baseURL, q.Encode())
-	return c.fetchFeed(endpoint)
+	return c.fetchFeed(endpoint, interestIDs)
 }
 
-func (c *Client) fetchFeed(endpoint string) (FeedResult, error) {
+func (c *Client) fetchFeed(endpoint, interestIDs string) (FeedResult, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return FeedResult{}, err
 	}
 	if c.apiKey != "" {
 		req.Header.Set("X-API-Key", c.apiKey)
+	}
+	if interestIDs != "" {
+		req.Header.Set("X-Interest-Ids", interestIDs)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
